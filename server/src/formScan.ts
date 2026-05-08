@@ -1,5 +1,58 @@
 import type { Session } from "./browser.ts";
 
+/**
+ * Classify a form input by tag, ARIA role, type attribute, and
+ * contenteditable flag. Pure function — same logic that runs inline
+ * inside the `scanForm` page.evaluate callback below.
+ *
+ * The two copies (this exported function AND the inline copy further
+ * down in this file) MUST stay in sync. Kept as a duplicate because
+ * `page.evaluate` runs in the browser context and cannot import from
+ * Node code. The Phase 4 refactor (form-scan moves to `application/`,
+ * page.evaluate splits into "DOM extraction" + "classification") will
+ * eliminate the duplication; until then, any edit here must be
+ * mirrored in the inline block (search for "INLINE classifier" in
+ * this file) and vice versa.
+ */
+export function classifyFormInput(input: {
+  tag: string;
+  role?: string | null;
+  type?: string;
+  isContentEditable?: boolean;
+}): FormQuestionInput["type"] {
+  const tag = input.tag.toLowerCase();
+  const role = (input.role ?? "").toLowerCase();
+  const t = (input.type ?? "").toLowerCase();
+  if (tag === "textarea") return "textarea";
+  if (tag === "select") return "select";
+  if (role === "checkbox" || t === "checkbox") return "checkbox";
+  if (role === "radio" || t === "radio") return "radio";
+  if (role === "switch") return "checkbox";
+  // ARIA combobox (and react-select-style components rendered as
+  // <input role="combobox" type="text">) is value-from-a-set, treat as
+  // select. Must come BEFORE the text-input branch so combobox-on-input
+  // wins over plain text.
+  if (role === "combobox") return "select";
+  if (
+    tag === "input" &&
+    (t === "text" ||
+      t === "email" ||
+      t === "url" ||
+      t === "search" ||
+      t === "" ||
+      t === "number" ||
+      t === "tel" ||
+      t === "password")
+  ) {
+    return "text";
+  }
+  if (tag === "input" && (t === "submit" || t === "button" || t === "reset")) {
+    return "button";
+  }
+  if (role === "textbox" || input.isContentEditable === true) return "textarea";
+  return "other";
+}
+
 export type FormQuestionInput = {
   /** The data-tickle-id we tagged on this input (numeric in string form). */
   tickle_id: number;
@@ -309,6 +362,8 @@ export async function scanForm(session: Session): Promise<FormScan> {
 
     for (const el of inputs) {
       inputCount++;
+      // INLINE classifier — must stay in sync with classifyFormInput
+      // exported above. See note there for why this duplication exists.
       const tag = el.tagName.toLowerCase();
       const explicitRole = el.getAttribute("role");
       const t = (el as HTMLInputElement).type?.toLowerCase?.();
@@ -318,6 +373,7 @@ export async function scanForm(session: Session): Promise<FormScan> {
       else if (explicitRole === "checkbox" || t === "checkbox") kind = "checkbox";
       else if (explicitRole === "radio" || t === "radio") kind = "radio";
       else if (explicitRole === "switch") kind = "checkbox";
+      else if (explicitRole === "combobox") kind = "select";
       else if (tag === "input" && (t === "text" || t === "email" || t === "url" || t === "search" || !t || t === "number" || t === "tel" || t === "password")) {
         kind = "text";
       } else if (tag === "input" && (t === "submit" || t === "button" || t === "reset")) {
