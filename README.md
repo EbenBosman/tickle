@@ -34,11 +34,37 @@ The agent sends a screenshot on every tool result, so the LLM needs vision. The 
 | Machine                          | What fits comfortably                                |
 |----------------------------------|------------------------------------------------------|
 | RTX 4080 (16 GB VRAM)            | qwen3.6-27b at Q3_K_M / Q4_K_S; partial offload at Q4_K_M. Watch context — large windows eat VRAM fast. |
+| **Mac mini M-series, 16 GB unified (baseline)** | **Don't run inference here.** macOS + Chromium leave ~6–8 GB free; a 27B at any quant won't fit. Use remote inference (below) instead. |
 | Mac mini M-series, 24 GB unified | qwen3.6-27b at Q4_K_M is fine; leave headroom for the OS and Chromium. |
 | Mac mini M-series, 36 GB+        | Q5/Q6 quants of 27B work; don't push higher unless you have benchmarks saying it helps. |
 | Linux box with 24 GB+ VRAM       | Same as above; vLLM is faster than Ollama if you can set it up. |
 
 If the model is unloading layers to RAM the agent feels sluggish but still works. If you're swapping to disk, drop a quant.
+
+### Remote inference (recommended for 16 GB Mac mini)
+
+When the host running tickle can't fit the model, point `LLM_BASE_URL` at another machine on the LAN. The agent + UI + persistent Chromium profile stay on the mini; the model runs on whichever box has the GPU.
+
+**On the inference host** (the box with the GPU — e.g. your Windows / Linux desktop):
+
+1. Open LM Studio → Developer tab → Settings → tick **"Serve on local network"**. (Ollama: set `OLLAMA_HOST=0.0.0.0:11434` before starting `ollama serve`.)
+2. Note the host's LAN IP (`ipconfig` on Windows, `ifconfig` / `ip a` on macOS / Linux). Static-leases the address in your router if you don't want it changing.
+3. Allow the port through the firewall (1234 for LM Studio, 11434 for Ollama). Restrict to LAN — never expose to the internet.
+
+**On the tickle host** (the Mac mini, in this case), set in `server/.env`:
+
+```bash
+LLM_BASE_URL=http://192.168.x.y:1234/v1   # or :11434/v1 for Ollama
+LLM_MODEL=qwen3.6-27b-uncensored-hauhaucs-balanced
+```
+
+That's it. The agent is screenshot-heavy, so latency-per-token matters more than absolute throughput; Gigabit LAN is plenty.
+
+A few practical notes:
+
+- **Wake / sleep:** if the inference host sleeps, the agent will hang on the next LLM call until you wake it. Prevent sleep on the inference host (`caffeinate -d` on macOS, or the Power Options "high performance" profile on Windows).
+- **The persistent browser profile lives on the mini**, not the inference host. Login state, cookies, passkeys are all stored in `server/data/profile/` on the machine running tickle. The model has no opinions about the browser session — it just sees screenshots and labelled element lists.
+- **`LLM_PROVIDER=anthropic`** is also a valid escape hatch if you don't want to keep a second box on. See `server/.env.example` for the keys.
 
 ## Run
 
