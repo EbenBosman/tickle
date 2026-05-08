@@ -130,18 +130,6 @@ export const toolDefs = [
       },
     },
   },
-  {
-    type: "function",
-    function: {
-      name: "finish",
-      description: "Call this when the task is complete. Provide the final answer or summary in `answer`.",
-      parameters: {
-        type: "object",
-        properties: { answer: { type: "string" } },
-        required: ["answer"],
-      },
-    },
-  },
 ] as const;
 
 export type ToolResult =
@@ -372,11 +360,10 @@ export async function executeTool(
         }
       }
 
-      case "finish": {
-        return { ok: true, text: String(args.answer ?? "") };
-      }
-
       default:
+        // finish_step is intercepted by agent.ts::runAiSubGoal before
+        // dispatch reaches here. Any other unknown name is a model
+        // hallucination; report it cleanly so the loop can stall-detect.
         return { ok: false, error: `Unknown tool: ${name}` };
     }
   } catch (err) {

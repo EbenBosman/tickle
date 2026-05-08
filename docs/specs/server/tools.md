@@ -8,7 +8,7 @@ The LLM cannot drive a browser directly — it can only emit OpenAI-style tool c
 
 The shape is constrained by three things: (a) the OpenAI tool-call wire format expected by `llm.ts` and re-emitted by Ollama / LM Studio / vLLM / SGLang; (b) the snapshot-and-act paradigm — the model never writes selectors, it picks numeric ids out of the most recent `snapshot()` and calls `act(id, action, value?)`; (c) page content is hostile and must be filtered before re-entering the prompt.
 
-> **Non-obvious why:** `finish_step` (declared as `finish` in the schema) is a *virtual* tool — it never reaches `executeTool`. The agent loop in `agent.ts` short-circuits on the name and ends the sub-goal. The schema entry exists only so the model knows the tool is callable.
+> **Non-obvious why:** `finish_step` is a *virtual* tool. It is appended to the model's tool list by `agent.ts::toolsForAiBlock` and intercepted by `runAiSubGoal` before dispatch — it never reaches `executeTool`. `toolDefs` deliberately does not declare it (and no longer declares an alias `finish`).
 >
 > **Non-obvious why:** `read_text` filters injection-risk DOM (hidden / zero-size / colour-camouflaged elements, `<script>` / `<style>` / `<template>`) because `read_text` output is concatenated into the next assistant prompt. That makes the page a prompt-injection vector unless invisible text is stripped before re-entry.
 
@@ -35,9 +35,8 @@ The shape is constrained by three things: (a) the OpenAI tool-call wire format e
 | `press_key`     | `key: string`                | —                                          | `{ ok: true, text: "Pressed <key>" }`                                               | no |
 | `screenshot`    | —                            | —                                          | `{ ok: true, image_base64, text: "(screenshot attached)" }`                         | no (it returns one) |
 | `fetch_url`     | `url: string` (http/https)   | —                                          | `{ ok: true, text: "Fetched <final-url> (<n> chars, returning first <m>):\n\n<body>" }` (≤6000 chars body) | no (uses temp tab; main page untouched) |
-| `finish`        | `answer: string`             | —                                          | **virtual** — never reaches `executeTool`; agent loop intercepts and ends the sub-goal | n/a |
 
-> **Drift:** the schema name is `finish`, not `finish_step`. CLAUDE.md and prompts in `agent.ts` refer to it as `finish_step(success, output?, note?)` with three parameters. ⚠️ The on-the-wire schema is `finish(answer)`. Either the docs or the schema should change; the spec owner is `agent.ts`. See §6.
+`finish_step(success, output?, note?)` is appended to the LLM's tool list inside `agent.ts::toolsForAiBlock` and intercepted by `runAiSubGoal` before dispatch — it does not appear in `toolDefs` and never reaches `executeTool`.
 
 ### `act.action` enum
 
@@ -74,7 +73,7 @@ The shape is constrained by three things: (a) the OpenAI tool-call wire format e
 - **I3 — `act` only resolves elements via the `[data-tickle-id="N"]` attribute.** It does not accept selectors and never receives selectors from the model. Falsifiable: confirm only one selector form in the `act` branch.
 - **I4 — `read_text` output ≤ 6000 characters and never contains content from filtered-out elements.** Falsifiable: render a page with `<div style="display:none">SECRET</div>` and assert `SECRET` does not appear in the result.
 - **I5 — `fetch_url` does not navigate the main page.** It opens a `context.newPage()` temp tab, reads, and closes it — even on error (`finally { tempPage.close() }`). Falsifiable: capture `session.page.url()` before and after; must be unchanged.
-- **I6 — `finish` is virtual.** `executeTool(session, "finish", { answer })` returns `{ ok: true, text: answer }`, but in production the agent loop intercepts the tool name **before** dispatch and the dispatcher branch is unreachable. Spec for the *agent loop*: it must short-circuit on the literal name `finish` (or `finish_step` if the schema is renamed — see §6).
+- **I6 — `finish_step` is virtual and never appears in `toolDefs`.** It is appended by `agent.ts::toolsForAiBlock` and intercepted by `runAiSubGoal` before dispatch. `executeTool` has no `finish` or `finish_step` branch; an unrecognised name falls through to `Unknown tool: <name>`. Falsifiable: `toolDefs` must contain neither `finish` nor `finish_step` (regression: `__tests__/tools.test.ts`).
 - **I7 — `screenshot` and `snapshot` are the only tools that attach `image_base64`.** All others return text-only.
 - **I8 — Auto-snapshot is the executor's responsibility, not this module's.** `agent.ts` is responsible for taking a fresh snapshot after every successful `navigate` and `act` call and attaching it to the tool result the model sees. `executeTool` itself does not auto-snapshot. Falsifiable: grep this module for `takeSnapshot` outside the `snapshot` branch — there must be exactly one call site.
 - **I9 — `act` timeouts are 8000ms, fixed.** Not configurable from the tool args. Falsifiable by inspection.
@@ -110,7 +109,7 @@ The shape is constrained by three things: (a) the OpenAI tool-call wire format e
 | §3 I4 `read_text` strips hidden / camouflage      | —         | —         | TODO(test) |
 | §3 I4 `read_text` ≤ 6000 chars and trims          | —         | —         | TODO(test) |
 | §3 I5 `fetch_url` does not navigate main page     | —         | —         | TODO(test) |
-| §3 I6 `finish` is intercepted before dispatch     | —         | —         | TODO(test) — owned by `agent.ts` spec |
+| §3 I6 `toolDefs` exposes neither `finish` nor `finish_step` | `__tests__/tools.test.ts` | `does not include finish` / `does not include finish_step either` | done |
 | §3 I8 auto-snapshot lives in `agent.ts`           | —         | —         | TODO(test) — static grep |
 | §2 errors row "Unknown action"                    | —         | —         | TODO(test) |
 | §2 errors row "No element with id N"              | —         | —         | TODO(test) |
@@ -135,7 +134,7 @@ The shape is constrained by three things: (a) the OpenAI tool-call wire format e
 
 ### Drift
 
-- **⚠️ Tool name vs. spec.** Schema declares `finish(answer)`. CLAUDE.md and the user-facing spec ("Sub-agent loop") describe `finish_step(success, output?, note?)`. Pick one and align both. Owner: `agent.ts` (defines the virtual handling).
+- **Resolved — `finish` removed from `toolDefs`.** The model now only sees `finish_step` (appended by `agent.ts::toolsForAiBlock`). The duplicate `finish` exposed an un-intercepted exit path that ran the loop to step-limit. Regression: `__tests__/tools.test.ts`.
 - **⚠️ `read_text` and `fetch_url` text walkers diverge.** `fetch_url`'s walker omits the font-size, bounding-box, and colour-camouflage checks. A page reachable via `fetch_url` is no less hostile than one reached via `navigate` — the same filter must apply. Refactor target: extract `extractVisibleText(root)` into a shared `infrastructure/browser/extractText.ts` and have both branches call it.
 - **⚠️ `select_option` matching mode is documented as "option text or value" but Playwright actually matches `value` attribute, label, *or* `<option>` text content, in priority order.** Either narrow Playwright's call (e.g. `selectOption({ label: value })` to force label-only) or update the schema description to match real behaviour. Until then, models will get inconsistent results across multi-language sites where `value` and visible text differ.
 - **⚠️ `read_text` slice-then-trim ordering.** Output is post-processed (`replace`, `replace`, `trim`) then `.slice(0, 6000)`. A page with 6001 chars of meaningful text followed by trailing whitespace would have its tail truncated mid-word silently. Acceptable for an LLM consumer but worth flagging.
