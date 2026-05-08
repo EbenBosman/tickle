@@ -7,7 +7,12 @@
     "install:all": "npm install && npm install --prefix server && npm install --prefix web",
     "dev": "concurrently --names server,web --prefix-colors blue.bold,magenta.bold --kill-others-on-fail \"npm --prefix server run dev\" \"npm --prefix web run dev\"",
     "dev:server": "npm --prefix server run dev",
-    "dev:web": "npm --prefix web run dev"
+    "dev:web": "npm --prefix web run dev",
+    "test": "npm --prefix server test && npm --prefix web test",
+    "test:server": "npm --prefix server test",
+    "test:web": "npm --prefix web test",
+    "typecheck:server": "npm --prefix server run typecheck",
+    "typecheck:web": "npm --prefix web run typecheck"
   },
   "devDependencies": {
     "concurrently": "^9.2.1"
