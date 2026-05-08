@@ -1,0 +1,15 @@
+{
+  "name": "tickle",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local AI browser agent — root harness for server + web.",
+  "scripts": {
+    "install:all": "npm install && npm install --prefix server && npm install --prefix web",
+    "dev": "concurrently --names server,web --prefix-colors blue.bold,magenta.bold --kill-others-on-fail \"npm --prefix server run dev\" \"npm --prefix web run dev\"",
+    "dev:server": "npm --prefix server run dev",
+    "dev:web": "npm --prefix web run dev"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}

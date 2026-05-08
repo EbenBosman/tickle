@@ -1,0 +1,19 @@
+# Normalize line endings: LF in the repo, native on checkout.
+* text=auto eol=lf
+
+# Treat known binaries as binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.pdf binary
+*.zip binary
+*.gz binary
+*.db binary
+*.sqlite binary
+
+# Lockfiles: keep diffs collapsible in PRs
+package-lock.json linguist-generated=true
+**/package-lock.json linguist-generated=true

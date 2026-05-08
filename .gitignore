@@ -1,0 +1,91 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# tickle .gitignore
+#
+# Two principles:
+#   1. Never commit secrets or anything that uniquely identifies the user
+#      (.env files, the persistent browser profile, cookies, IndexedDB).
+#   2. Never commit large/derived artefacts (node_modules, builds, traces,
+#      databases, screenshots).
+#
+# If you add a new directory under server/data/ or web/dist/ that *should* be
+# tracked, add an explicit `!` exception below.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Environment & secrets — track the example, never the real one
+.env
+.env.local
+.env.*.local
+**/.env
+**/.env.local
+**/.env.*.local
+!**/.env.example
+
+# Server runtime data — persistent browser profile, SQLite, traces, screenshots
+# Anything under server/data is user-state or generated; keep the directory
+# itself absent from the repo.
+server/data/
+server/screenshots/
+
+# SQLite + WAL/SHM
+*.sqlite
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Logs & traces (JSONL rotations etc.)
+*.log
+*.log.*
+logs/
+
+# Build output
+dist/
+build/
+out/
+**/dist/
+**/build/
+.next/
+.turbo/
+
+# Test & coverage
+coverage/
+.nyc_output/
+*.lcov
+.vitest/
+.cache/
+
+# TypeScript build info
+*.tsbuildinfo
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.shared.json
+*.swp
+*.swo
+*~
+
+# Playwright
+playwright-report/
+test-results/
+/playwright/.cache/
+
+# Local Claude state — keep team-shared config (commands, skills, agents,
+# settings.json) but ignore per-user overrides and runtime caches.
+.claude/settings.local.json
+.claude/.cache/
+.claude/projects/
+
+# Lockfiles policy: we keep root + workspace lockfiles for reproducible builds.
+# (No ignore entries here — package-lock.json is committed.)
