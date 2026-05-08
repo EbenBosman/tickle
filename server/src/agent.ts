@@ -1,4 +1,5 @@
 import { newLlmClient, newAnthropicClient, chatOnce, MODEL, type LlmClient, type Message, type ChatResponse } from "./llm.ts";
+import { type BlockOutcome, mergeRescuedOutcome } from "./blockOutcome.ts";
 import { Session } from "./browser.ts";
 import { toolDefs, executeTool, type ToolResult } from "./tools.ts";
 import { takeSnapshot } from "./snapshot.ts";
@@ -285,12 +286,6 @@ export async function runAgent(
   }
 }
 
-type BlockOutcome =
-  | { status: "done"; summary?: string; details?: unknown }
-  | { status: "skipped" }
-  | { status: "failed"; error: string; details?: unknown }
-  | { status: "cancelled"; error?: string };
-
 async function executeBlocks(
   ctx: ExecCtx,
   blocks: Block[],
@@ -312,7 +307,19 @@ async function executeBlocks(
     ctx.persist("block_start", { id: block.id, kind: block.kind, summary, path: [...ctx.blockPath] });
     trace("block.start", { runId: ctx.runId, kind: block.kind, summary: summary.slice(0, 120) });
 
-    const outcome = await executeBlock(ctx, block);
+    const localOutcome = await executeBlock(ctx, block);
+
+    // If local failed and rescue is available, attempt rescue and merge
+    // its result into a single canonical outcome BEFORE emitting
+    // block_end. Emitting twice (once on local failure, once on rescue
+    // success) produced two `steps` rows per block and forced the UI
+    // into last-write-wins.
+    let outcome: BlockOutcome = localOutcome;
+    if (localOutcome.status === "failed" && ctx.claudeClient !== null) {
+      const localMessages = (localOutcome as AiSubOutcome).messages ?? [];
+      const rescueOutcome = await runClaudeRescue(ctx, block, localOutcome.error, localMessages);
+      outcome = mergeRescuedOutcome(localOutcome, rescueOutcome);
+    }
 
     const blockEndDetails =
       outcome.status === "done"
@@ -349,34 +356,6 @@ async function executeBlocks(
     trace("block.end", { runId: ctx.runId, kind: block.kind, status: outcome.status });
 
     if (outcome.status === "cancelled") return { status: "cancelled" };
-    if (outcome.status === "failed" && ctx.claudeClient !== null) {
-      const localMessages = (outcome as AiSubOutcome).messages ?? [];
-      const rescueOutcome = await runClaudeRescue(ctx, block, outcome.error, localMessages);
-      if (rescueOutcome.status === "cancelled") return { status: "cancelled" };
-      if (rescueOutcome.status !== "failed") {
-        const rescueSummary = rescueOutcome.status === "done" ? rescueOutcome.summary : undefined;
-        ctx.emit({
-          kind: "block_end",
-          block_id: block.id,
-          block_kind: block.kind,
-          status: "done",
-          result: rescueSummary,
-          path: [...ctx.blockPath],
-        });
-        ctx.persist("block_end", {
-          id: block.id, kind: block.kind, status: "done",
-          result: rescueSummary, path: [...ctx.blockPath],
-        });
-        lastSummary = rescueSummary ?? lastSummary;
-        if (block.pauseAfter && !ctx.isCancelled()) {
-          const reason = `Stopped after ${block.kind} block (breakpoint)`;
-          if (pauseRun(ctx.runId, { reason, auto: true })) {
-            ctx.emit({ kind: "paused", reason, auto: true });
-          }
-        }
-        continue;
-      }
-    }
     if (outcome.status === "failed") {
       return { status: "error", error: `Block ${block.kind} failed: ${outcome.error}` };
     }
