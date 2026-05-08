@@ -83,7 +83,6 @@ Issues surfaced while specifying the modules. Each is captured in detail in the 
 - 🔴 **`finish` vs `finish_step` is a correctness bug.** Both names appear in tool defs (`finish` from `toolDefs`, `finish_step` appended). Only `finish_step` is intercepted by `runAiSubGoal`. If the model picks `finish`, `executeTool` returns it as a normal tool result and the loop continues until stall/step-limit failure. **Fix:** drop `finish` from `toolDefs`, or stop appending `finish_step`. (Drift between agent and tool docs was noted earlier; the actual model-visible mismatch is the bug.)
 - 🔴 **`block_end` emitted twice on successful Claude rescue.** Once with `failed` (local), then again with `done` (rescue). Two `steps` rows per block; UI relies on last-write-wins.
 - 🔴 **`scanForm` bug:** `SELECTOR` includes `[role="combobox"]` but the classifier has no combobox branch — combobox elements get tagged `"other"` and would be unfillable.
-- 🔴 **`newAnthropicClient(model)` ignores its `model` argument.** Anthropic provider always uses the wrong (or default) model.
 - 🔴 **No top-level catch on the run-start IIFE.** A throw out of `runAgent` leaks as an unhandled rejection and leaves the `runs` row stuck in `running` forever.
 - 🔴 **`/screenshots/*` has no path-traversal guard.** Literal string concat with only a `.png` suffix filter. Local-only context, but trivial to fix.
 - 🔴 **CORS `origin: true`** — server binds 127.0.0.1 but CORS allows any origin. DNS-rebinding lets a malicious page in the user's browser drive the API.
@@ -147,3 +146,9 @@ Issues surfaced while specifying the modules. Each is captured in detail in the 
 ### Bookkeeping
 
 - ✅ **`pause.ts` / `cancel.ts` — index naming.** Resolved: split into `-pause` and `-cancel` specs.
+
+## Resolved findings
+
+Items fixed since the original Phase 2 pass. Each links to its regression test.
+
+- **`newAnthropicClient(model)` dead parameter.** Removed; the `model` is per-call via `ChatOptions.model` (which has always been the runtime path). Regression: `server/src/__tests__/llm.test.ts`.

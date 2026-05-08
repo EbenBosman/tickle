@@ -187,7 +187,7 @@ export async function runAgent(
   const rescueOnCancel = getSetting("rescue_on_cancel") === "true";
   const claudeClient: LlmClient | null =
     rescueEnabled && process.env.ANTHROPIC_API_KEY
-      ? newAnthropicClient(rescueModel)
+      ? newAnthropicClient()
       : null;
   let activeController: AbortController | null = null;
   const setActiveController = (c: AbortController | null) => { activeController = c; };

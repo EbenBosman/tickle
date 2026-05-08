@@ -48,7 +48,7 @@ export function newLlmClient(): LlmClient {
   };
 }
 
-export function newAnthropicClient(model: string): LlmClient {
+export function newAnthropicClient(): LlmClient {
   return {
     provider: "anthropic",
     client: new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }),
