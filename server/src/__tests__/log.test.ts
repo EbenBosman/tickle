@@ -174,13 +174,98 @@ describe("log — stdout mirror", () => {
   });
 });
 
-describe("log — redaction (TARGET behaviour, currently red — see security.md)", () => {
-  // 🔴 The trace logger does NOT redact secrets today. These tests pin
-  // the desired behaviour and run as `it.todo` so they show in the
-  // backlog without failing CI. When redaction is added, swap `.todo`
-  // for `it` and they should immediately pass.
-  it.todo("strips `apiKey` from ctx before writing");
-  it.todo("strips `authorization` / `cookie` / `password` / `token` from ctx");
-  it.todo("recursively strips banned keys from nested objects");
-  it.todo("honours LOG_REDACT env var to extend the denylist");
+describe("log — redaction", () => {
+  // The denylist replaces banned-key VALUES with the marker string,
+  // it does not delete keys. Knowing a credential was passed (without
+  // knowing its value) is useful for debugging.
+  const REDACTED = "[redacted]";
+
+  it("replaces apiKey value with the redaction marker before writing", () => {
+    trace("auth", { runId: 1, apiKey: "sk-live-abc-xyz" });
+    const [line] = readLines();
+    const parsed = JSON.parse(line);
+    expect(parsed.apiKey).toBe(REDACTED);
+    expect(parsed.runId).toBe(1);
+    // The actual value must NOT appear anywhere in the line.
+    expect(line).not.toContain("sk-live-abc-xyz");
+  });
+
+  it("redacts authorization, cookie, password, and token at the top level", () => {
+    trace("auth", {
+      authorization: "Bearer secret",
+      cookie: "session=abc",
+      password: "hunter2",
+      token: "eyJhbGc",
+      // benign key passes through untouched
+      runId: 1,
+    });
+    const [line] = readLines();
+    const parsed = JSON.parse(line);
+    expect(parsed.authorization).toBe(REDACTED);
+    expect(parsed.cookie).toBe(REDACTED);
+    expect(parsed.password).toBe(REDACTED);
+    expect(parsed.token).toBe(REDACTED);
+    expect(parsed.runId).toBe(1);
+    expect(line).not.toContain("Bearer secret");
+    expect(line).not.toContain("hunter2");
+  });
+
+  it("matches denylisted keys case-insensitively", () => {
+    trace("auth", { Authorization: "Bearer x", APIKEY: "k" });
+    const parsed = JSON.parse(readLines()[0]);
+    expect(parsed.Authorization).toBe(REDACTED);
+    expect(parsed.APIKEY).toBe(REDACTED);
+  });
+
+  it("recursively redacts banned keys from nested objects", () => {
+    trace("call", {
+      runId: 1,
+      request: {
+        url: "/api/foo",
+        headers: { authorization: "Bearer xyz", "x-trace": "ok" },
+      },
+    });
+    const parsed = JSON.parse(readLines()[0]);
+    expect(parsed.request.headers.authorization).toBe(REDACTED);
+    expect(parsed.request.headers["x-trace"]).toBe("ok");
+    expect(parsed.request.url).toBe("/api/foo");
+  });
+
+  it("recursively redacts banned keys inside arrays", () => {
+    trace("batch", {
+      items: [
+        { id: 1, token: "abc" },
+        { id: 2, token: "def" },
+      ],
+    });
+    const parsed = JSON.parse(readLines()[0]);
+    expect(parsed.items[0].token).toBe(REDACTED);
+    expect(parsed.items[1].token).toBe(REDACTED);
+    expect(parsed.items[0].id).toBe(1);
+  });
+
+  it("does not mutate the caller's ctx object", () => {
+    const ctx = { runId: 1, apiKey: "sk-orig" };
+    trace("auth", ctx);
+    expect(ctx.apiKey).toBe("sk-orig");
+  });
+
+  it("honours LOG_REDACT env var to extend the denylist", async () => {
+    process.env.LOG_REDACT = "custom_key,extra";
+    vi.resetModules();
+    const mod = await import("../log.ts");
+    mod.trace("call", { custom_key: "secret-1", extra: "secret-2", runId: 1 });
+    const data = fsState.files.get(LOG_PATH_REL) ?? "";
+    const parsed = JSON.parse(data.trim());
+    expect(parsed.custom_key).toBe(REDACTED);
+    expect(parsed.extra).toBe(REDACTED);
+    expect(parsed.runId).toBe(1);
+    delete process.env.LOG_REDACT;
+  });
+
+  it("survives a circular reference in ctx without throwing", () => {
+    const a: Record<string, unknown> = { runId: 1 };
+    a.self = a;
+    expect(() => trace("circular", a)).not.toThrow();
+  });
 });

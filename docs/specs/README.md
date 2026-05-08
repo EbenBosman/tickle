@@ -129,7 +129,6 @@ Issues surfaced while specifying the modules. Each is captured in detail in the 
 
 ### Security
 
-- 🔴 **`log.ts` — no secret redaction.** `trace()` spreads `ctx` verbatim; user `fill` values and extracted page text already on disk. Future caller could log API keys/cookies/auth headers without warning. Add a denylist (`apiKey`, `authorization`, `cookie`, `password`, `token`) + `LOG_REDACT` env var.
 - 🟠 **`runs.status` has no CHECK constraint** — any string accepted, type guarantee is at the application layer only.
 
 ### Concurrency / consistency
@@ -152,3 +151,4 @@ Items fixed since the original Phase 2 pass. Each links to its regression test.
 - **`newAnthropicClient(model)` dead parameter.** Removed; the `model` is per-call via `ChatOptions.model` (which has always been the runtime path). Regression: `server/src/__tests__/llm.test.ts`.
 - **CORS `origin: true` allowed any origin.** Replaced with an explicit allowlist of localhost dev origins (`server/src/cors.ts`). Pure `isAllowedOrigin` policy plus an integration test that wires it through `@fastify/cors` and asserts the response-header matrix via `app.inject()`. Regression: `server/src/__tests__/cors.test.ts`.
 - **`/screenshots/*` path traversal.** Replaced literal string-concat plus `.png` suffix check with `safeResolveScreenshot` in `server/src/paths.ts`: resolves against the screenshots base, asserts the resolved path stays inside (with separator-boundary guard against sibling-directory bypass), and rejects non-`.png` requests. Regression: `server/src/__tests__/paths.test.ts` covers parent-dir escapes, deep traversal, absolute POSIX/Windows paths, sibling-directory bypass, and non-`.png` extensions.
+- **`log.ts` secret redaction.** The trace logger previously spread `ctx` verbatim into the JSONL line; user `fill` values and extracted page text already on disk meant a future caller could leak API keys, cookies, or auth headers. Added a default denylist (`apikey`, `authorization`, `cookie`, `password`, `token`, case-insensitive) that replaces matched values with `[redacted]`. Recurses into nested objects and arrays, structurally clones so the caller's object is never mutated, and breaks circular references with a `[circular]` marker. The `LOG_REDACT` env var extends the denylist with comma-separated additional keys. Regression: `server/src/__tests__/log.test.ts` (the four previously-`todo` rows are now real tests).

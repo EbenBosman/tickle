@@ -34,9 +34,11 @@ The previous `cors({ origin: true })` config let any origin drive `/api/*` — D
 
 The route used to do literal string concat (`screenshots/${rest}`) and serve any matching file with a `.png` suffix — `..`, absolute paths, and sibling-directory bypasses all worked. Now uses `safeResolveScreenshot` in `server/src/paths.ts`, which `path.resolve`s against the screenshots base, asserts the resolved path stays inside via a separator-boundary check, and rejects non-`.png`. Regression: `server/src/__tests__/paths.test.ts`.
 
-### 🔴 Trace log has no secret redaction
+### Trace log secret redaction (resolved)
 
-`log.ts::trace()` spreads `ctx` verbatim. Today's call sites are clean, but the next caller could log an API key without warning. User `fill` values and extracted page text already on disk. See [`observability-log.md`](../server/observability-log.md). **Target:** denylist + `LOG_REDACT` env var, per [observability cross-cut](./observability.md).
+`log.ts::trace()` previously spread `ctx` verbatim into the JSONL line. Now applies a default denylist (`apikey`, `authorization`, `cookie`, `password`, `token`, case-insensitive) that replaces matched values with `[redacted]`. Recurses into nested objects and arrays, structurally clones so the caller's object is never mutated, and breaks circular references with a `[circular]` marker. The `LOG_REDACT` env var extends the denylist with comma-separated additional keys. The stdout mirror also uses the redacted form. Regression: `server/src/__tests__/log.test.ts`.
+
+PII surface in user `fill` values and extracted page text remains — those are not denylisted because they are signal, not secrets, and call sites that log them already do so with intent. The same denylist will be reused when `/api/export` gets a redaction layer (see [`http-export.md`](../server/http-export.md)).
 
 ### 🟠 Compile preview has no danger affordances
 

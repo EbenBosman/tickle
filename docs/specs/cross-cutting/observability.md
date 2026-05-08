@@ -59,9 +59,7 @@ For each event, where it lands today. ✅ = lands; ⛔ = does not.
 
 - Rotation: 5 MB threshold, single backup `.log.1` (overwritten). [`observability-log.md`](../server/observability-log.md).
 - Single backup is intentional — bounds disk to ~10 MB.
-- 🔴 **No redaction.** `trace()` spreads `ctx` verbatim. User `fill` values and extracted page text already on disk. Future caller could log API keys / cookies / auth headers without warning.
-
-**Target:** denylist (`apiKey`, `authorization`, `cookie`, `password`, `token`) applied at write time + `LOG_REDACT` env var to extend.
+- **Redaction (resolved).** `trace()` applies a default denylist (`apikey`, `authorization`, `cookie`, `password`, `token`, case-insensitive) before serialising; matched values become `[redacted]`. Recurses into nested objects and arrays, structurally clones (caller's `ctx` not mutated), and breaks cycles with `[circular]`. The `LOG_REDACT` env var extends the denylist with comma-separated additional keys. Regression: `server/src/__tests__/log.test.ts`.
 
 ### DB `steps`
 

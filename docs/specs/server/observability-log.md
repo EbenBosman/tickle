@@ -31,7 +31,7 @@ Every successful `trace(event, ctx)` call appends one line to `LOG_FILE`:
 
 - `t` is ISO-8601 UTC, always present, always first by construction.
 - `event` is the second key, always a non-empty string.
-- The remaining keys are spread from `ctx` verbatim — no transformation, no allow-list, no redaction (see §6).
+- The remaining keys are spread from `ctx` after a redaction pass (default denylist: `apikey`, `authorization`, `cookie`, `password`, `token`, case-insensitive). Matched values become the literal string `[redacted]`. Recursion handles nested objects and arrays; cycles are broken with `[circular]`. The `LOG_REDACT` env var extends the denylist with comma-separated additional keys.
 - Each line ends with exactly one `\n` and is itself valid JSON.
 
 ### Event vocabulary
@@ -82,16 +82,20 @@ The `runId` field is conventionally present on every per-run event but is **not 
 
 | Spec section / claim                                 | Test file | Test name | Status |
 |------------------------------------------------------|-----------|-----------|--------|
-| §3 I1 one line per call                              | —         | —         | TODO(test) |
-| §3 I2 every line is valid JSON                       | —         | —         | TODO(test) |
-| §3 I3 `t` + `event` always present                   | —         | —         | TODO(test) |
-| §3 I4 file-write failure doesn't throw               | —         | —         | TODO(test) |
-| §3 I5 rotation triggers at ≥5 MB                     | —         | —         | TODO(test) |
-| §3 I6 rotation overwrites prior `.log.1`             | —         | —         | TODO(test) |
-| §3 I7 rotation does not split a line                 | —         | —         | TODO(test) |
-| §3 I8 stdout mirror per call                         | —         | —         | TODO(test) |
+| §3 I1 one line per call, `\n` terminated             | `__tests__/log.test.ts` | `writes one JSON line per call, terminated by \\n` | done |
+| §3 I2 every line is valid JSON                       | `__tests__/log.test.ts` | `each line parses to JSON with t (ISO) and event keys` | done |
+| §3 I3 `t` + `event` always present                   | `__tests__/log.test.ts` | `each line parses to JSON with t (ISO) and event keys` | done |
+| §3 I4 file-write failure doesn't throw               | `__tests__/log.test.ts` | `does not throw when the underlying append fails`     | done |
+| §3 I5 rotation triggers at ≥5 MB                     | `__tests__/log.test.ts` | `rotates to .log.1 when the file is >=5 MB at write time` | done |
+| §3 I6 rotation overwrites prior `.log.1`             | `__tests__/log.test.ts` | `overwrites a prior .log.1 on subsequent rotation`    | done |
+| §3 I8 stdout mirror per call                         | `__tests__/log.test.ts` | `mirrors with [run N] prefix when runId is provided`  | done |
+| §2.1 redaction default denylist                      | `__tests__/log.test.ts` | `redacts authorization, cookie, password, and token at the top level` | done |
+| §2.1 redaction recurses into nested objects/arrays   | `__tests__/log.test.ts` | `recursively redacts banned keys from nested objects` / `inside arrays` | done |
+| §2.1 redaction case-insensitive                      | `__tests__/log.test.ts` | `matches denylisted keys case-insensitively`          | done |
+| §2.1 caller's ctx not mutated                        | `__tests__/log.test.ts` | `does not mutate the caller's ctx object`             | done |
+| §2.1 `LOG_REDACT` env var extends the denylist       | `__tests__/log.test.ts` | `honours LOG_REDACT env var to extend the denylist`   | done |
+| §2.1 circular ctx does not throw                     | `__tests__/log.test.ts` | `survives a circular reference in ctx without throwing` | done |
 | §2 each documented event kind appears with the right shape | — (would need an integration harness collecting trace lines from a real run) | — | TODO(test) |
-| §6 redaction (if/when added)                         | —         | —         | TODO(test) — currently no redaction to test |
 
 ### Deliberately not tested
 
@@ -100,8 +104,8 @@ The `runId` field is conventionally present on every per-run event but is **not 
 
 ## 6. Drift / open questions
 
-- **🔒 SECURITY — no redaction.** `trace(event, ctx)` spreads `ctx` verbatim into the JSON line. The current call sites are audited and **do not** pass `LLM_API_KEY`, `ANTHROPIC_API_KEY`, cookies, or auth headers — but the contract has no allow-list and no key-name denylist, so a future caller that does `trace("llm.request", { apiKey: process.env.LLM_API_KEY })` would silently ship the key to disk and stdout. Even today, `tool.call` and `tool.result` log `args` and a slice of `result.content`, which can include user-entered form values (`fill` block params) and page text — not credentials by current usage, but page-extracted content can include personal data the user didn't intend to retain. **Mitigations to consider:** (a) explicit denylist of common secret-like keys (`apiKey`, `authorization`, `cookie`, `password`, `token`); (b) require call sites to pre-redact and document this in the `trace` JSDoc; (c) add a `LOG_REDACT` env var taking a comma-separated key list. None implemented today.
-- **⚠️ Drift — `existsSync` branch is dead.** `rotateIfNeeded` checks `existsSync(${LOG_PATH}.1)` and the `if` body is a comment-only no-op. Either delete the branch or replace it with an explicit `unlinkSync` for clarity. Behaviourally a no-op today because `renameSync` overwrites on POSIX and modern Windows Node, but the dead code suggests the author was unsure.
+- **Resolved — secret redaction.** `trace(event, ctx)` now applies a default denylist (`apikey`, `authorization`, `cookie`, `password`, `token`, case-insensitive) before serialising. Matched values are replaced with `[redacted]`; key names remain visible so debugging "did this code path receive an API key?" still works. The redactor recurses into nested objects and arrays, structurally clones (caller's `ctx` not mutated), and breaks cycles with `[circular]`. The `LOG_REDACT` env var extends the denylist with comma-separated additional keys. PII surface from `tool.call` / `tool.result` (user `fill` values, page extracts) is unchanged — those are signal, not secrets, and the call sites log them with intent.
+- **Resolved — dead `existsSync` branch in `rotateIfNeeded` removed.** `renameSync` overwrites on POSIX and modern Windows Node, so the comment-only conditional was always a no-op.
 - **⚠️ Drift — `LOG_PATH` is CWD-relative.** Documented effective path is `server/data/tickle.log` only because the server is launched from `server/`. If anyone ever runs the server from the repo root or from a different CWD, the log relocates silently and the README's tail commands stop working. Resolve to an absolute path anchored to the module location (e.g. `path.resolve(import.meta.dirname, "../data/tickle.log")`).
 - **⚠️ Drift — vocabulary not typed.** See §2 — events are stringly-typed and the documented vocabulary in CLAUDE.md is a strict undercount of actual call sites. Hoist `TraceEventKind` into `domain/observability.ts` post-refactor and have `trace` accept the union.
 - **⚠️ Drift — circular-reference crash path.** `JSON.stringify` of a `ctx` containing a cycle throws *outside* the `try/catch` that wraps `appendFileSync`, so I4 is technically falsifiable: passing a cyclic object would crash the agent. Wrap the `JSON.stringify` (and the whole body, ideally) in a single outer `try/catch`, or sanitize via a `safeStringify` helper.
