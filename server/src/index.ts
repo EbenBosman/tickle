@@ -1,6 +1,7 @@
 import "./loadEnv.ts"; // MUST stay as first import — populates process.env before llm.ts captures constants
 import Fastify from "fastify";
 import cors from "@fastify/cors";
+import { corsOptions } from "./cors.ts";
 import { tasksRoutes } from "./routes/tasks.ts";
 import { runsRoutes } from "./routes/runs.ts";
 import { compileRoutes } from "./routes/compile.ts";
@@ -12,7 +13,7 @@ const PORT = Number(process.env.PORT ?? 8787);
 
 const app = Fastify({ logger: true });
 
-await app.register(cors, { origin: true });
+await app.register(cors, corsOptions);
 await app.register(tasksRoutes);
 await app.register(runsRoutes);
 await app.register(compileRoutes);

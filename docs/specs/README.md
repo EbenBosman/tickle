@@ -85,7 +85,6 @@ Issues surfaced while specifying the modules. Each is captured in detail in the 
 - 🔴 **`scanForm` bug:** `SELECTOR` includes `[role="combobox"]` but the classifier has no combobox branch — combobox elements get tagged `"other"` and would be unfillable.
 - 🔴 **No top-level catch on the run-start IIFE.** A throw out of `runAgent` leaks as an unhandled rejection and leaves the `runs` row stuck in `running` forever.
 - 🔴 **`/screenshots/*` has no path-traversal guard.** Literal string concat with only a `.png` suffix filter. Local-only context, but trivial to fix.
-- 🔴 **CORS `origin: true`** — server binds 127.0.0.1 but CORS allows any origin. DNS-rebinding lets a malicious page in the user's browser drive the API.
 - 🟠 **`page_state` and `stats` events not persisted.** CLAUDE.md "Storage" claims all events get a `steps` row; in fact `page_state` and `stats` are emitted live only. SSE clients reconnecting via replay miss them entirely.
 - 🟠 **`runClaudeRescue` bypasses the in-memory step counter.** Re-prepares its own INSERT and computes `stepIdx` via `SELECT MAX(idx)+1`. Latent race with the main run if any concurrency emerges.
 - 🟠 **`CompileFromText` preview lacks danger affordances.** The "human-review-before-execute" injection defence per `http-compile.md` §6 is load-bearing, but the preview is a plain `<ol>` of `kind` + summary — no off-host `navigate` banner, no credential-pattern flag. Makes review a rubber-stamp.
@@ -152,3 +151,4 @@ Issues surfaced while specifying the modules. Each is captured in detail in the 
 Items fixed since the original Phase 2 pass. Each links to its regression test.
 
 - **`newAnthropicClient(model)` dead parameter.** Removed; the `model` is per-call via `ChatOptions.model` (which has always been the runtime path). Regression: `server/src/__tests__/llm.test.ts`.
+- **CORS `origin: true` allowed any origin.** Replaced with an explicit allowlist of localhost dev origins (`server/src/cors.ts`). Pure `isAllowedOrigin` policy plus an integration test that wires it through `@fastify/cors` and asserts the response-header matrix via `app.inject()`. Regression: `server/src/__tests__/cors.test.ts`.

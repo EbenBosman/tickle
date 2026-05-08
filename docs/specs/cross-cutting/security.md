@@ -26,9 +26,9 @@ The persistent profile, the trace log, and the SQLite DB all hold material that,
 
 ## Current state — gaps
 
-### 🔴 CORS lets any origin drive the API
+### CORS allowlist (resolved)
 
-Server binds `127.0.0.1` but `cors({ origin: true })` allows any origin. **DNS rebinding** lets a malicious page in the user's browser drive `/api/*` against a local agent. See [`http-runs.md`](../server/http-runs.md). **Target:** `cors({ origin: ["http://localhost:5173", "http://127.0.0.1:5173"] })` in dev; deny otherwise. Add a `Host:` header check that rejects external hostnames.
+The previous `cors({ origin: true })` config let any origin drive `/api/*` — DNS-rebinding territory. Now uses an explicit allowlist (`server/src/cors.ts`): `http://localhost:5173`, `http://127.0.0.1:5173`, `http://[::1]:5173` for the Vite dev origins, and the matching `:8787` origins for direct browsing. Missing/empty Origin (same-origin / curl / SSE) is allowed; everything else is rejected. Regression: `server/src/__tests__/cors.test.ts` covers both the pure policy and the wired-up Fastify behaviour. A future `Host:`-header check would add belt-and-braces protection but is not required for the local-only threat model.
 
 ### 🔴 `/screenshots/*` has no path-traversal guard
 

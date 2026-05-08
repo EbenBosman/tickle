@@ -29,7 +29,7 @@ This module is the only seam through which the outside world starts, observes, c
 | `GET`  | `/api/runs/:id/stream`              | none | SSE: replay persisted steps then subscribe to live events.           |
 | `GET`  | `/screenshots/*`                    | none | Static PNG file serving from `screenshots/<rest>`.                   |
 
-> ⚠️ **Drift / security.** All endpoints are unauthenticated. Fastify is bound to `127.0.0.1` (`server/src/index.ts`), so reachable only locally — but CORS is registered with `origin: true`, meaning any browser origin (including a malicious page the user happens to visit) can issue these requests against `127.0.0.1:8787` and start, cancel, or delete runs. Acceptable for the local-only design today; document and re-evaluate before any non-loopback bind.
+> ⚠️ **Security note.** All endpoints are unauthenticated. Fastify is bound to `127.0.0.1` (`server/src/index.ts`), so reachable only locally. CORS is now restricted to a localhost dev allowlist (`server/src/cors.ts`); previously `origin: true` left a DNS-rebinding window. Acceptable for the local-only design; revisit before any non-loopback bind.
 
 ### Endpoint contracts
 
@@ -174,7 +174,7 @@ Bulk-clear all runs for a task.
 ## 6. Drift / open questions
 
 - **⚠️ Drift — single-run invariant unenforced.** Two concurrent `POST /run` calls produce two concurrent `runAgent` invocations against the shared persistent Chromium context. Either reject the second call (`409 { error: "another run is active" }`) or document this is an upstream-UI invariant. The current code does neither.
-- **⚠️ Drift — CORS `origin: true` on unauthenticated local server.** Any browser origin can drive these endpoints while the user is browsing elsewhere. Acceptable today (local-only, low-value side effects, all destructive ops are confirmed in the UI), but should be tightened to `http://localhost:5173` (and the app's prod origin) before any non-loopback bind, or coupled with a per-origin token.
+- **Resolved — CORS allowlist.** Previously `origin: true`. Now restricted via `server/src/cors.ts` to localhost dev origins. Regression: `server/src/__tests__/cors.test.ts`.
 - **⚠️ Drift — path traversal in `/screenshots/*`.** No `path.normalize` / no startsWith-screenshots check. Add `const resolved = path.resolve("screenshots", req.params["*"]); if (!resolved.startsWith(path.resolve("screenshots") + path.sep)) return 404;`.
 - **⚠️ Drift — fire-and-forget IIFE has no top-level error catch.** A throw escaping `runAgent` becomes an unhandled rejection, leaves the row at `running`, and never publishes `end`. `agent.ts` is contracted not to throw, but a defensive `try/catch` here would convert any future regression into a finalized `error` row.
 - **⚠️ Drift — `DELETE /api/tasks/:taskId/runs` with `force` does not wait for cancellation.** It calls `requestCancel`, immediately UPDATEs the row to `cancelled`, then deletes screenshots. The agent IIFE for that run is still alive and may publish further events, eventually try to UPDATE the row, and find it gone (or already terminal). No corruption observed (UPDATE WHERE id matches nothing is a no-op), but the agent's screenshot writes can race with `deleteRunArtifacts`'s file unlinks.
