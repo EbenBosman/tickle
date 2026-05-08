@@ -6,6 +6,7 @@ import { subscribe, publish, endTopic } from "../bus.ts";
 import { requestCancel } from "../cancel.ts";
 import { pause, resume, isPaused, getPauseInfo } from "../pause.ts";
 import { trace } from "../log.ts";
+import { safeResolveScreenshot } from "../paths.ts";
 
 function deleteRunArtifacts(runId: number): number {
   const rows = db
@@ -261,13 +262,14 @@ export async function runsRoutes(app: FastifyInstance) {
     return reply;
   });
 
-  // Serve persisted screenshots
+  // Serve persisted screenshots. The path-traversal guard lives in
+  // safeResolveScreenshot — see server/src/paths.ts and its tests.
   app.get<{ Params: { "*": string } }>("/screenshots/*", async (req, reply) => {
-    const path = `screenshots/${req.params["*"]}`;
-    if (!existsSync(path) || !path.endsWith(".png")) {
+    const safe = safeResolveScreenshot(req.params["*"]);
+    if (!safe || !existsSync(safe)) {
       return reply.code(404).send();
     }
     reply.type("image/png");
-    return reply.send(createReadStream(path));
+    return reply.send(createReadStream(safe));
   });
 }

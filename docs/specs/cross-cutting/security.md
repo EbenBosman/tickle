@@ -30,9 +30,9 @@ The persistent profile, the trace log, and the SQLite DB all hold material that,
 
 The previous `cors({ origin: true })` config let any origin drive `/api/*` — DNS-rebinding territory. Now uses an explicit allowlist (`server/src/cors.ts`): `http://localhost:5173`, `http://127.0.0.1:5173`, `http://[::1]:5173` for the Vite dev origins, and the matching `:8787` origins for direct browsing. Missing/empty Origin (same-origin / curl / SSE) is allowed; everything else is rejected. Regression: `server/src/__tests__/cors.test.ts` covers both the pure policy and the wired-up Fastify behaviour. A future `Host:`-header check would add belt-and-braces protection but is not required for the local-only threat model.
 
-### 🔴 `/screenshots/*` has no path-traversal guard
+### `/screenshots/*` path-traversal guard (resolved)
 
-Literal string concat with only `.png` suffix filter. Local-only context, but trivial to fix and the kind of thing that gets re-read months later as "wait, really?". See [`http-runs.md`](../server/http-runs.md). **Target:** `path.resolve` against `SHOTS_DIR`, reject anything escaping.
+The route used to do literal string concat (`screenshots/${rest}`) and serve any matching file with a `.png` suffix — `..`, absolute paths, and sibling-directory bypasses all worked. Now uses `safeResolveScreenshot` in `server/src/paths.ts`, which `path.resolve`s against the screenshots base, asserts the resolved path stays inside via a separator-boundary check, and rejects non-`.png`. Regression: `server/src/__tests__/paths.test.ts`.
 
 ### 🔴 Trace log has no secret redaction
 
