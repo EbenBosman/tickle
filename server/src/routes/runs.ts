@@ -7,6 +7,7 @@ import { requestCancel } from "../cancel.ts";
 import { pause, resume, isPaused, getPauseInfo } from "../pause.ts";
 import { trace } from "../log.ts";
 import { safeResolveScreenshot } from "../paths.ts";
+import { errorMessageFromThrow } from "../errors.ts";
 
 function deleteRunArtifacts(runId: number): number {
   const rows = db
@@ -42,14 +43,30 @@ export async function runsRoutes(app: FastifyInstance) {
     const runId = Number(info.lastInsertRowid);
 
     // Kick off the agent loop without awaiting.
+    //
+    // Anything thrown out of runAgent or its children must finalise the
+    // runs row to status="error" — otherwise the row sits at "running"
+    // forever and the UI shows a phantom in-flight run. The try/catch
+    // below converts a throw into a synthetic outcome and routes it
+    // through the same finalisation path as a graceful return. The
+    // outer .catch() on the IIFE itself is a last-resort guard against
+    // a throw inside finalize().
     (async () => {
-      const outcome = await runAgent(
-        runId,
-        task.id,
-        task.instruction,
-        task.steps ?? null,
-        (ev) => publish(runId, ev),
-      );
+      type RunOutcome = Awaited<ReturnType<typeof runAgent>>;
+      let outcome: RunOutcome;
+      try {
+        outcome = await runAgent(
+          runId,
+          task.id,
+          task.instruction,
+          task.steps ?? null,
+          (ev) => publish(runId, ev),
+        );
+      } catch (e) {
+        const error = errorMessageFromThrow(e);
+        trace("run.unhandled_throw", { runId, error });
+        outcome = { status: "error", error };
+      }
       const finishedAt = new Date().toISOString();
       if (outcome.status === "done") {
         db.prepare(
@@ -67,7 +84,13 @@ export async function runsRoutes(app: FastifyInstance) {
       publish(runId, { kind: "end", status: outcome.status, result: outcome.result, error: outcome.error });
       // Give late subscribers a moment, then drop the topic.
       setTimeout(() => endTopic(runId), 5000);
-    })();
+    })().catch((e) => {
+      // Last-resort: a throw INSIDE finalisation (e.g. db unavailable).
+      // We can't update the row reliably; leave a trace so it's visible
+      // and don't let it become an unhandled rejection that crashes the
+      // process.
+      trace("run.finalize_failed", { runId, error: errorMessageFromThrow(e) });
+    });
 
     return { run_id: runId };
   });

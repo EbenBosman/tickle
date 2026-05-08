@@ -13,11 +13,11 @@
 
 These come straight out of Phase 2 specs. Each is something the principles above demand and the current code doesn't deliver.
 
-### Top-level rejection escape (🔴 blocker)
+### Top-level rejection escape (resolved)
 
-`server/src/routes/runs.ts` runs `runAgent` inside a fire-and-forget IIFE with no top-level catch. A throw out of `runAgent` leaks as an unhandled rejection and the `runs` row stays at `running` forever. See [`server/http-runs.md`](../server/http-runs.md) §6.
+`server/src/routes/runs.ts` previously ran `runAgent` inside a fire-and-forget IIFE with no top-level catch. A throw out of `runAgent` (Playwright crash, SQLite write failure, LLM-client throw, etc.) propagated as an unhandled rejection and the `runs` row stayed at `running` forever.
 
-**Target:** the IIFE awaits a `runAgent`-returning promise wrapped in `try/catch/finally`; on any throw the run is finalized as `error` and the trace records the throw. Status flips to terminal in `finally`.
+The IIFE now wraps `runAgent` in `try/catch`, converts a throw into a synthetic `{ status: "error", error }` outcome via `errorMessageFromThrow` (`server/src/errors.ts`), traces a `run.unhandled_throw` event, and routes the outcome through the same finalisation path as a graceful return. An outer `.catch()` on the IIFE itself is the last-resort guard against a throw inside finalisation (e.g. DB unavailable) so process-level crashes are still impossible. Regression: `server/src/__tests__/errors.test.ts` covers the error-message normalisation; the IIFE shape is short enough to confirm by inspection.
 
 ### `tools.ts` `try/catch` swallows distinct error kinds
 
