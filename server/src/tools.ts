@@ -51,7 +51,7 @@ export const toolDefs = [
     function: {
       name: "act",
       description:
-        "Perform an action on an element from the most recent snapshot. Actions: click, fill (typing into a textbox — `value` is the text), press (a key while focused — `value` is the key), check, uncheck, hover, select_option (`value` is the option text or value).",
+        "Perform an action on an element from the most recent snapshot. Actions: click, fill (typing into a textbox — `value` is the text), press (a key while focused — `value` is the key), check, uncheck, hover, select_option (Playwright matches `value` against option value first, then label, then visible text — supply whichever you can read).",
       parameters: {
         type: "object",
         properties: {
@@ -94,12 +94,20 @@ export const toolDefs = [
     type: "function",
     function: {
       name: "wait_for",
-      description: "Wait for an element matching a CSS selector to appear in the DOM.",
+      description:
+        "Wait for an element matching a CSS selector. Default `state` is 'visible' — the element must be in the DOM AND visible (non-zero size, not display:none/visibility:hidden/opacity:0). Pass state='attached' to wait only for DOM presence (may be invisible), 'hidden' to wait for the element to disappear visually, or 'detached' to wait for it to leave the DOM.",
       parameters: {
         type: "object",
         properties: {
           selector: { type: "string" },
           timeout_ms: { type: "number", default: 8000 },
+          state: {
+            type: "string",
+            enum: ["visible", "attached", "hidden", "detached"],
+            default: "visible",
+            description:
+              "What to wait for. Default 'visible' (in DOM and visible). Use 'attached' for DOM presence only.",
+          },
         },
         required: ["selector"],
       },
@@ -149,6 +157,96 @@ export type ToolResult =
   | { ok: false; error: string };
 
 type Args = Record<string, unknown>;
+
+/**
+ * Source of the shared in-page text-extraction walker. Both `read_text` and
+ * `fetch_url` evaluate this string (via `new Function`) inside the page so
+ * the same hostile-content denylist applies to both. Kept as a plain string
+ * because `page.evaluate` cannot reach module-scope helpers and we want one
+ * canonical walker, not two near-copies that drift.
+ *
+ * Signature: `(selector: string | null) => string`
+ *
+ * Strip rules:
+ *   - hidden HTML tag set (script/style/template/noscript/meta/link/head/title)
+ *   - aria-hidden="true"
+ *   - display:none
+ *   - visibility:hidden
+ *   - parseFloat(opacity) === 0
+ *   - font-size <= 0.5px
+ *   - zero-size bounding rect (width===0 || height===0)
+ *   - color === backgroundColor (camouflage)
+ */
+const EXTRACT_VISIBLE_TEXT_FN_SOURCE = `
+(function (selector) {
+  var root = selector ? document.querySelector(selector) : document.body;
+  if (!root) return "";
+
+  var HIDDEN_TAGS = new Set([
+    "script","style","template","noscript","meta","link","head","title"
+  ]);
+
+  function isInjectionRisk(el) {
+    var tag = el.tagName.toLowerCase();
+    if (HIDDEN_TAGS.has(tag)) return true;
+    if (el.getAttribute("aria-hidden") === "true") return true;
+    var style = window.getComputedStyle(el);
+    if (style.display === "none") return true;
+    if (style.visibility === "hidden") return true;
+    if (parseFloat(style.opacity || "1") === 0) return true;
+    if (parseFloat(style.fontSize || "16") <= 0.5) return true;
+    var r = el.getBoundingClientRect();
+    if (r.width === 0 || r.height === 0) return true;
+    if (style.color && style.backgroundColor && style.color === style.backgroundColor) {
+      return true;
+    }
+    return false;
+  }
+
+  var BLOCK_TAGS = new Set([
+    "div","p","br","tr","li","section","article",
+    "h1","h2","h3","h4","h5","h6","header","footer","nav"
+  ]);
+
+  function walk(node) {
+    if (node.nodeType === Node.TEXT_NODE) return node.textContent || "";
+    if (node.nodeType !== Node.ELEMENT_NODE) return "";
+    var el = node;
+    if (isInjectionRisk(el)) return "";
+    var out = "";
+    var kids = Array.from(el.childNodes);
+    for (var i = 0; i < kids.length; i++) out += walk(kids[i]);
+    if (BLOCK_TAGS.has(el.tagName.toLowerCase())) out += "\\n";
+    return out;
+  }
+
+  return walk(root);
+})
+`;
+
+/** Public so tests can verify the walker behaves identically for both consumers. */
+export const __extractVisibleTextFnSource = EXTRACT_VISIBLE_TEXT_FN_SOURCE;
+
+async function extractVisibleText(
+  page: Session["page"],
+  selector: string | null,
+): Promise<string> {
+  // Build the walker inside the page and call it. We pass the source as a
+  // string so both `read_text` and `fetch_url` use the exact same code.
+  return await page.evaluate<string, [string, string | null]>(
+    ([fnSrc, sel]) => {
+      // Wrap in parens so ASI doesn't turn `return\n(function...)` into
+      // `return; (function...)` and discard the function expression.
+      // eslint-disable-next-line @typescript-eslint/no-implied-eval
+      const factory = new Function("return (" + fnSrc + ");") as () => (
+        s: string | null,
+      ) => string;
+      const fn = factory();
+      return fn(sel);
+    },
+    [EXTRACT_VISIBLE_TEXT_FN_SOURCE, selector],
+  );
+}
 
 export async function executeTool(session: Session, name: string, args: Args): Promise<ToolResult> {
   try {
@@ -246,72 +344,7 @@ export async function executeTool(session: Session, name: string, args: Args): P
 
       case "read_text": {
         const selector = args.selector ? asString(args.selector) : null;
-        const text = await session.page.evaluate((sel) => {
-          const root = sel ? document.querySelector(sel) : document.body;
-          if (!root) return "";
-
-          const HIDDEN_TAGS = new Set([
-            "script",
-            "style",
-            "template",
-            "noscript",
-            "meta",
-            "link",
-            "head",
-            "title",
-          ]);
-
-          const isInjectionRisk = (el: Element): boolean => {
-            const tag = el.tagName.toLowerCase();
-            if (HIDDEN_TAGS.has(tag)) return true;
-            if (el.getAttribute("aria-hidden") === "true") return true;
-            const style = window.getComputedStyle(el);
-            if (style.display === "none") return true;
-            if (style.visibility === "hidden") return true;
-            if (parseFloat(style.opacity || "1") === 0) return true;
-            if (parseFloat(style.fontSize || "16") <= 0.5) return true;
-            const r = (el as HTMLElement).getBoundingClientRect();
-            if (r.width === 0 || r.height === 0) return true;
-            if (style.color && style.backgroundColor && style.color === style.backgroundColor) {
-              return true;
-            }
-            return false;
-          };
-
-          const blockTags = new Set([
-            "div",
-            "p",
-            "br",
-            "tr",
-            "li",
-            "section",
-            "article",
-            "h1",
-            "h2",
-            "h3",
-            "h4",
-            "h5",
-            "h6",
-            "header",
-            "footer",
-            "nav",
-          ]);
-
-          const walk = (node: Node): string => {
-            if (node.nodeType === Node.TEXT_NODE) return node.textContent ?? "";
-            if (node.nodeType !== Node.ELEMENT_NODE) return "";
-            const el = node as Element;
-            if (isInjectionRisk(el)) return "";
-            let out = "";
-            for (const child of Array.from(el.childNodes)) {
-              out += walk(child);
-            }
-            if (blockTags.has(el.tagName.toLowerCase())) out += "\n";
-            return out;
-          };
-
-          return walk(root);
-        }, selector);
+        const text = await extractVisibleText(session.page, selector);
         const trimmed = text
           .replace(/[ \t]+\n/g, "\n")
           .replace(/\n{3,}/g, "\n\n")
@@ -329,8 +362,14 @@ export async function executeTool(session: Session, name: string, args: Args): P
       case "wait_for": {
         const selector = asString(args.selector);
         const timeout = Number(args.timeout_ms ?? 8000);
-        await session.page.locator(selector).first().waitFor({ state: "attached", timeout });
-        return { ok: true, text: `Element ${selector} present` };
+        const rawState = args.state !== undefined ? asString(args.state) : "visible";
+        const validStates = ["visible", "attached", "hidden", "detached"] as const;
+        type WaitState = (typeof validStates)[number];
+        const state: WaitState = (validStates as readonly string[]).includes(rawState)
+          ? (rawState as WaitState)
+          : "visible";
+        await session.page.locator(selector).first().waitFor({ state, timeout });
+        return { ok: true, text: `Element ${selector} ${state}` };
       }
 
       case "press_key": {
@@ -353,59 +392,11 @@ export async function executeTool(session: Session, name: string, args: Args): P
         const tempPage = await ctx.newPage();
         try {
           await tempPage.goto(url, { waitUntil: "domcontentloaded", timeout: 20_000 });
-          const text = await tempPage.evaluate(() => {
-            const HIDDEN = new Set([
-              "script",
-              "style",
-              "template",
-              "noscript",
-              "meta",
-              "link",
-              "head",
-              "title",
-            ]);
-            const isHidden = (el: Element): boolean => {
-              if (HIDDEN.has(el.tagName.toLowerCase())) return true;
-              if (el.getAttribute("aria-hidden") === "true") return true;
-              const s = window.getComputedStyle(el);
-              if (s.display === "none" || s.visibility === "hidden") return true;
-              if (parseFloat(s.opacity || "1") === 0) return true;
-              return false;
-            };
-            const block = new Set([
-              "div",
-              "p",
-              "br",
-              "tr",
-              "li",
-              "section",
-              "article",
-              "h1",
-              "h2",
-              "h3",
-              "h4",
-              "h5",
-              "h6",
-              "header",
-              "footer",
-              "nav",
-            ]);
-            const walk = (node: Node): string => {
-              if (node.nodeType === Node.TEXT_NODE) return node.textContent ?? "";
-              if (node.nodeType !== Node.ELEMENT_NODE) return "";
-              const el = node as Element;
-              if (isHidden(el)) return "";
-              let out = "";
-              for (const c of Array.from(el.childNodes)) out += walk(c);
-              if (block.has(el.tagName.toLowerCase())) out += "\n";
-              return out;
-            };
-            const root = document.body || document.documentElement;
-            return walk(root)
-              .replace(/[ \t]+\n/g, "\n")
-              .replace(/\n{3,}/g, "\n\n")
-              .trim();
-          });
+          const raw = await extractVisibleText(tempPage, null);
+          const text = raw
+            .replace(/[ \t]+\n/g, "\n")
+            .replace(/\n{3,}/g, "\n\n")
+            .trim();
           const finalUrl = tempPage.url();
           const trimmed = text.slice(0, 6000);
           return {

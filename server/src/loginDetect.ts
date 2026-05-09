@@ -44,11 +44,18 @@ export async function detectLoginPrompt(page: Page): Promise<LoginDetection> {
 
   // Generic: visible password field, or visible passkey/webauthn UI cues.
   const dom = await page.evaluate(() => {
+    // keep-in-sync: visibility.ts — display:none / visibility:hidden /
+    // parseFloat(opacity) === 0 / zero-size rect. Inline because
+    // page.evaluate can't import the shared helper. We use parseFloat
+    // so "0.0", "0.00", etc. are also treated as hidden.
     const isVisible = (el: Element): boolean => {
       const r = (el as HTMLElement).getBoundingClientRect();
       if (r.width === 0 || r.height === 0) return false;
       const s = window.getComputedStyle(el);
-      return s.visibility !== "hidden" && s.display !== "none" && s.opacity !== "0";
+      if (s.display === "none") return false;
+      if (s.visibility === "hidden") return false;
+      if (parseFloat(s.opacity || "1") === 0) return false;
+      return true;
     };
 
     const pwd = Array.from(document.querySelectorAll('input[type="password"]')).find(isVisible);

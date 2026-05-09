@@ -183,6 +183,16 @@ export async function checkQuestionAnswered(
 
 export async function scanForm(session: Session): Promise<FormScan> {
   return await session.page.evaluate(() => {
+    // Clear stale data-tickle-id attributes from any prior snapshot/scan.
+    // SPAs can re-render between calls and clobber tags in unpredictable
+    // ways; resetting here makes id assignment deterministic.
+    document
+      .querySelectorAll("[data-tickle-id]")
+      .forEach((el) => el.removeAttribute("data-tickle-id"));
+
+    // keep-in-sync: visibility.ts — display:none / visibility:hidden /
+    // parseFloat(opacity) === 0 / zero-size rect. Inline because
+    // page.evaluate can't import the shared helper.
     const isVisible = (el: Element): boolean => {
       const rect = (el as HTMLElement).getBoundingClientRect();
       if (rect.width === 0 || rect.height === 0) return false;

@@ -36,6 +36,13 @@ export async function takeSnapshot(
 
   const result = await session.page.evaluate(
     ({ max, query, viewportOnly, threshold }) => {
+      // Clear stale data-tickle-id attributes from any prior snapshot/scan.
+      // SPAs can re-render between calls and clobber tags in unpredictable
+      // ways; resetting here makes id assignment deterministic.
+      document
+        .querySelectorAll("[data-tickle-id]")
+        .forEach((el) => el.removeAttribute("data-tickle-id"));
+
       const SELECTOR = [
         "a[href]",
         "button",
@@ -58,7 +65,12 @@ export async function takeSnapshot(
         "[onclick]",
       ].join(",");
 
+      // keep-in-sync: visibility.ts (display:none / visibility:hidden /
+      // opacity 0 / zero rect). Inline because page.evaluate can't import.
       const isVisible = (el: Element): boolean => {
+        // aria-hidden="true" on self or any ancestor removes the element
+        // from the accessibility tree — never expose to the model.
+        if (el.closest("[aria-hidden='true']")) return false;
         const rect = (el as HTMLElement).getBoundingClientRect();
         if (rect.width === 0 || rect.height === 0) return false;
         const s = window.getComputedStyle(el);

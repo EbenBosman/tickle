@@ -131,3 +131,49 @@ describe("read_text — clamping", () => {
     expect(text.length).toBeLessThanOrEqual(6000);
   });
 });
+
+// docs/specs/server/tools.md — `read_text` and `fetch_url` MUST share one
+// hostile-content walker. Previously `fetch_url`'s in-page walker had a
+// weaker filter (5 rules vs 8). After the consolidation the same denylist
+// applies to both; we exercise the unified walker via `read_text` here
+// because `fetch_url` would require an HTTP server. The unified-walker
+// guarantee is enforced by the implementation: both consumers call
+// `extractVisibleText`, which evaluates `__extractVisibleTextFnSource`.
+describe("read_text — unified walker (also covers fetch_url)", () => {
+  it("strips elements whose text colour matches the background colour", async () => {
+    const html =
+      '<p>Visible</p><p style="color:#ff0000;background-color:#ff0000">SECRET</p>';
+    const text = await readText(html);
+    expect(text).toContain("Visible");
+    expect(text).not.toContain("SECRET");
+  });
+
+  it("strips elements whose computed bounding rect is zero", async () => {
+    // width:0;height:0;overflow:hidden collapses the box to a zero rect.
+    const html =
+      '<p>Visible</p><p style="width:0;height:0;overflow:hidden">SECRET</p>';
+    const text = await readText(html);
+    expect(text).toContain("Visible");
+    expect(text).not.toContain("SECRET");
+  });
+
+  it("strips opacity:0.0 (parseFloat-based) just like opacity:0", async () => {
+    const text = await readText('<p>Visible</p><p style="opacity:0.0">SECRET</p>');
+    expect(text).toContain("Visible");
+    expect(text).not.toContain("SECRET");
+  });
+});
+
+// Static surface check: both consumers must reference the same shared
+// walker source — guards against future drift back to two walkers.
+describe("read_text — implementation invariant", () => {
+  it("exports a single walker source string used by both read_text and fetch_url", async () => {
+    const mod = await import("../tools.ts");
+    expect(typeof mod.__extractVisibleTextFnSource).toBe("string");
+    expect(mod.__extractVisibleTextFnSource).toContain("HIDDEN_TAGS");
+    expect(mod.__extractVisibleTextFnSource).toContain("aria-hidden");
+    expect(mod.__extractVisibleTextFnSource).toContain("getBoundingClientRect");
+    expect(mod.__extractVisibleTextFnSource).toContain("backgroundColor");
+    expect(mod.__extractVisibleTextFnSource).toContain("fontSize");
+  });
+});
