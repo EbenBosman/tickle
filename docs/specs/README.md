@@ -69,22 +69,7 @@ These don't belong to one module but apply across all of them. Each synthesises 
 
 Issues surfaced while specifying the modules. Each is captured in detail in the relevant module spec; tracked here so they don't get lost. Severity is rough (🔴 fix soon, 🟠 worth scheduling, 🟡 nit/cleanup).
 
-### Behavioural drift (code disagrees with docs/specs)
-
-- 🟡 **`VALID_MODELS` duplicated** between `routes/settings.ts` and `web/src/components/SettingsPage.tsx` — change one, drift the other.
-
-### Likely bugs
-
-
-### Misplaced code (resolves with refactor)
-
-- 🟠 **Frontend domain duplication** — `web/src/blocks.ts` mirrors `server/src/blocks.ts` (types, `newBlock`, defaults). Post-refactor: shared `domain/`.
-- 🟡 **`SseEvent` union: web side still inline.** Server now has a canonical `domain/run.ts` (`StepKind`, `EndEvent`, `LIVE_ONLY_KINDS`). Web's `RunView.tsx` carries its own copy of the SSE event shape. Cross-workspace import is the same blocker as the `VALID_MODELS` split below.
-- 🟡 **`VALID_MODELS` server/web split** — server's `domain/models.ts` is now the source of truth; web's `SettingsPage.tsx::MODELS` carries the richer label/cost metadata for display and is marked `keep-in-sync`. A cross-workspace shared `domain/` would unify them; deferred until tsconfig project references or a `shared/` workspace land.
-
-### Bookkeeping
-
-- ✅ **`pause.ts` / `cancel.ts` — index naming.** Resolved: split into `-pause` and `-cancel` specs.
+_All Phase 2 findings have been resolved. Future drift should be appended here as it surfaces._
 
 ## Resolved findings
 
@@ -135,3 +120,7 @@ Items fixed since the original Phase 2 pass. Each links to its regression test.
 - **`CompileFromText` preview lacks danger affordances.** New `web/src/state/compileFlags.ts` exposes pure detectors: `isExternalUrl` flags off-localhost `navigate` blocks; `looksLikeCredential` flags `fill` blocks whose target description or value matches credential / SSN / credit-card patterns. The preview now shows a "Review carefully — N blocks flagged" banner when any flag fires, and per-block badges with the reason (tooltip + visible). Regression: `web/src/__tests__/compileFlags.test.ts` covers local-vs-external URL classification, credential keyword set, card / SSN shape, and the per-block + list-summary helpers (40+ cases).
 - **`alert()` / `confirm()` for action errors throughout the UI.** Replaced with a `<UiPromptsProvider>` context exposing `useUiPrompts()`. `toast.error/info/success` enqueue auto-dismissing toasts (5s lifetime, manually dismissible); `confirm(message, { destructive })` returns a promise resolving to a boolean and renders a styled modal with ESC = cancel, Enter / autofocus = confirm. Provider mounted in `main.tsx` above `<App>`. All 16 alert / confirm call sites in `App.tsx`, `RunView.tsx`, `TaskList.tsx`, and `CompileFromText.tsx` migrated.
 - **Drag-drop cannot cross `for_each` boundaries.** `BlockList`'s `dragId` is now lifted into a `DragCtx` provider at the root, so a drag started in the outer list and dropped into a nested `for_each.body` (or vice-versa) completes via a single tree-mutating `moveBlockInTree(tree, sourceId, parentBlockId, beforeIdx)` helper. The helper refuses to drop a `for_each` into itself or its own descendants (cycle prevention). Same-list moves preserve their pre-removal-index semantics so the visual drop gap matches the user's intent. Regression: `web/src/__tests__/moveBlockInTree.test.ts` (10 cases: forward / backward / same-position no-op / cross-tree in / cross-tree out / nested reorder / cycle refusal cases / unknown source).
+- **Cross-workspace duplication: `Block` types, `SseEvent`, `VALID_MODELS`.** New top-level `shared/` workspace (`shared/blocks.ts`, `shared/run.ts`, `shared/models.ts`) is now the single source of truth for both server and web. Each workspace's tsconfig includes `../shared/**/*`; relative imports work via the existing `Bundler` moduleResolution. Server `domain/run.ts` and `domain/models.ts` shrink to re-exports; `agent.ts::AgentEvent` becomes `Exclude<SseEvent, { kind: "end" }>`. Web `useRunStream`'s `StreamEvent` and `api.ts::Step["kind"]` consume shared shapes; `SettingsPage`'s rich `MODELS` array is now generated from the shared `VALID_MODELS` list. Resolves three previously-deferred yellow items.
+- **`RunView` entries unbounded.** Switched to `react-window` 2.x with `useDynamicRowHeight`, keyed on `runId` so heights don't leak between runs. Added a "stick to bottom" guard (24px slack via `onScroll`) so users scrolling up to inspect history aren't yanked back when new entries arrive.
+- **No SSE auto-reconnect.** Each event line on `/api/runs/:id/stream` now carries an `id:` annotation: replay rows use `r-<idx>`, live events use `live-<n>`. EventSource records the most recent id and sends it as `Last-Event-ID` on auto-reconnect. The route reads that header and skips replay rows up to the resumed idx; malformed / unknown ids fall back to full replay. Client (`useRunStream`) no longer closes EventSource on transient `onerror` — native exponential reconnect kicks in. Replay entries dedupe by id defensively. Regression: `server/src/routes/__tests__/runs.stream.test.ts` (5 cases).
+- **`agent.ts` god file (1516 lines).** Decomposed: per-block orchestration moved to `server/src/application/` — `runStatelessStep.ts` (+ `runVerifyBlock`, `buildStatelessUserPrompt`), `runQuestionnaireBlock.ts` (+ `enrichQuestionsWithVision`), `runClaudeRescue.ts` (+ `generateLesson`, `buildLessonContext`); `ExecCtx` and `AgentEvent` types in `application/execCtx.ts`. `agent.ts` is now 790 lines, owning only `runAgent`, `executeBlocks`, `executeBlock`, `runAiSubGoal`, and the persist/emit setup.
