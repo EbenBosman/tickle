@@ -2,79 +2,14 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { StatusPill } from "./StatusPill.tsx";
 import { api } from "../api.ts";
 import { parseSqliteUtc, formatDuration } from "../state/parseSqliteUtc.ts";
+import {
+  useRunStream,
+  type BlockStatus,
+  type Entry,
+  type RunStatsSample,
+} from "../state/useRunStream.ts";
 
-export type BlockStatus = "pending" | "running" | "done" | "failed" | "skipped";
-
-type StreamEvent =
-  | {
-      replay: true;
-      step: { idx: number; kind: string; payload: string; screenshot_path: string | null };
-    }
-  | { kind: "thought"; text: string; block_id?: string }
-  | { kind: "tool_call"; name: string; args: unknown; block_id?: string }
-  | {
-      kind: "tool_result";
-      name: string;
-      result: { ok: boolean; text?: string; error?: string; data?: unknown };
-      screenshotPath?: string;
-      block_id?: string;
-    }
-  | { kind: "block_start"; block_id: string; block_kind: string; summary: string; path: string[] }
-  | {
-      kind: "block_end";
-      block_id: string;
-      block_kind: string;
-      status: BlockStatus;
-      result?: string;
-      error?: string;
-      details?: unknown;
-      path: string[];
-    }
-  | { kind: "var_set"; name: string; preview: string }
-  | { kind: "remember"; note: string }
-  | { kind: "page_state"; url: string; title: string }
-  | {
-      kind: "stats";
-      model: string;
-      prompt_tokens: number;
-      output_tokens: number;
-      eval_duration_ms: number;
-      tps: number;
-    }
-  | { kind: "paused"; reason?: string; auto?: boolean }
-  | { kind: "resumed" }
-  | { kind: "error"; error: string; block_id?: string }
-  | { kind: "final"; answer: string }
-  | { kind: "end"; status: string; result?: string; error?: string };
-
-type Entry = {
-  id: string;
-  kind:
-    | "thought"
-    | "tool_call"
-    | "tool_result"
-    | "error"
-    | "final"
-    | "block_start"
-    | "block_end"
-    | "var_set"
-    | "remember";
-  body: string;
-  ok?: boolean;
-  toolName?: string;
-  screenshot?: string;
-  blockKind?: string;
-  /** For block_end of a questionnaire: list of unanswered question summaries. */
-  unanswered?: { question: string; reason: string }[];
-};
-
-export type RunStatsSample = {
-  model: string;
-  prompt_tokens: number;
-  output_tokens: number;
-  eval_duration_ms: number;
-  tps: number;
-};
+export type { BlockStatus, RunStatsSample };
 
 export function RunView({
   runId,
@@ -92,195 +27,12 @@ export function RunView({
     statusMap: Record<string, BlockStatus>;
   }) => void;
 }) {
-  const [entries, setEntries] = useState<Entry[]>([]);
-  const [status, setStatus] = useState<string>("running");
-  const [paused, setPaused] = useState(false);
-  const [pauseInfo, setPauseInfo] = useState<{ reason?: string; auto?: boolean } | null>(null);
-  const [pageState, setPageState] = useState<{ url: string; title: string } | null>(null);
-  const [memory, setMemory] = useState<string[]>([]);
   const [memoryOpen, setMemoryOpen] = useState(false);
-  const [startedAt, setStartedAt] = useState<string | null>(null);
-  const [finishedAt, setFinishedAt] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const scrollerRef = useRef<HTMLDivElement>(null);
-  const latestStatusMapRef = useRef<Record<string, BlockStatus>>({});
-  const latestRunningRef = useRef<string | null>(null);
 
-  useEffect(() => {
-    setEntries([]);
-    setStatus("running");
-    setPaused(false);
-    setPauseInfo(null);
-    setPageState(null);
-    setMemory([]);
-    setStartedAt(null);
-    setFinishedAt(null);
-    latestStatusMapRef.current = {};
-    latestRunningRef.current = null;
-
-    api
-      .getRun(runId)
-      .then(({ run, pause_info }) => {
-        setStartedAt(run.started_at);
-        setFinishedAt(run.finished_at);
-        if (run.status !== "running") setStatus(run.status);
-        // Fallback for SSE-event misses on reconnect: server tells us if the
-        // run is currently paused so the Resume button shows immediately.
-        if (run.is_paused) {
-          setPaused(true);
-          setPauseInfo(pause_info ?? null);
-        }
-      })
-      .catch(() => {
-        // ignore — run might not exist yet on a fresh start
-      });
-
-    const es = new EventSource(`/api/runs/${runId}/stream`);
-    let counter = 0;
-    es.onmessage = (msg) => {
-      const ev = JSON.parse(msg.data as string) as StreamEvent;
-      counter++;
-      if ("replay" in ev) {
-        const s = ev.step;
-        const payload = JSON.parse(s.payload) as Record<string, unknown>;
-        setEntries((prev) => [
-          ...prev,
-          {
-            id: `r-${s.idx}`,
-            kind: s.kind as Entry["kind"],
-            body: renderBody(s.kind, payload),
-            ok: s.kind === "tool_result" ? Boolean(payload.ok) : undefined,
-            toolName: typeof payload.name === "string" ? payload.name : undefined,
-            screenshot: s.screenshot_path ?? undefined,
-          },
-        ]);
-      } else if (ev.kind === "thought") {
-        setEntries((p) => [...p, { id: `t-${counter}`, kind: "thought", body: ev.text }]);
-      } else if (ev.kind === "tool_call") {
-        setEntries((p) => [
-          ...p,
-          {
-            id: `tc-${counter}`,
-            kind: "tool_call",
-            toolName: ev.name,
-            body: JSON.stringify(ev.args, null, 2),
-          },
-        ]);
-      } else if (ev.kind === "tool_result") {
-        setEntries((p) => [
-          ...p,
-          {
-            id: `tr-${counter}`,
-            kind: "tool_result",
-            toolName: ev.name,
-            ok: ev.result.ok,
-            body: ev.result.ok ? (ev.result.text ?? "") : (ev.result.error ?? ""),
-            screenshot: ev.screenshotPath,
-          },
-        ]);
-      } else if (ev.kind === "error") {
-        setEntries((p) => [...p, { id: `e-${counter}`, kind: "error", body: ev.error }]);
-      } else if (ev.kind === "block_start") {
-        setEntries((p) => [
-          ...p,
-          {
-            id: `bs-${ev.block_id}-${counter}`,
-            kind: "block_start",
-            body: ev.summary,
-            blockKind: ev.block_kind,
-          },
-        ]);
-        onBlockStatus?.({
-          blockId: ev.block_id,
-          statusMap: {
-            ...latestStatusMapRef.current,
-            [ev.block_id]: "running",
-          },
-        });
-        latestStatusMapRef.current = {
-          ...latestStatusMapRef.current,
-          [ev.block_id]: "running",
-        };
-        latestRunningRef.current = ev.block_id;
-      } else if (ev.kind === "block_end") {
-        const details = ev.details as
-          | { unanswered?: { question: string; reason: string }[]; total?: number }
-          | undefined;
-        const unanswered = Array.isArray(details?.unanswered) ? details.unanswered : undefined;
-        setEntries((p) => [
-          ...p,
-          {
-            id: `be-${ev.block_id}-${counter}`,
-            kind: "block_end",
-            body: ev.result ?? ev.error ?? "",
-            blockKind: ev.block_kind,
-            ok: ev.status === "done",
-            unanswered: unanswered && unanswered.length > 0 ? unanswered : undefined,
-          },
-        ]);
-        latestStatusMapRef.current = {
-          ...latestStatusMapRef.current,
-          [ev.block_id]: ev.status,
-        };
-        if (latestRunningRef.current === ev.block_id) latestRunningRef.current = null;
-        onBlockStatus?.({
-          blockId: latestRunningRef.current,
-          statusMap: latestStatusMapRef.current,
-        });
-      } else if (ev.kind === "var_set") {
-        setEntries((p) => [
-          ...p,
-          { id: `var-${counter}`, kind: "var_set", body: `$${ev.name} = ${ev.preview}` },
-        ]);
-      } else if (ev.kind === "remember") {
-        setMemory((m) => [...m, ev.note]);
-        setEntries((p) => [...p, { id: `mem-${counter}`, kind: "remember", body: ev.note }]);
-      } else if (ev.kind === "page_state") {
-        setPageState({ url: ev.url, title: ev.title });
-      } else if (ev.kind === "stats") {
-        onStats?.({
-          model: ev.model,
-          prompt_tokens: ev.prompt_tokens,
-          output_tokens: ev.output_tokens,
-          eval_duration_ms: ev.eval_duration_ms,
-          tps: ev.tps,
-        });
-      } else if (ev.kind === "paused") {
-        setPaused(true);
-        setPauseInfo({ reason: ev.reason, auto: ev.auto });
-      } else if (ev.kind === "resumed") {
-        setPaused(false);
-        setPauseInfo(null);
-      } else if (ev.kind === "final") {
-        setEntries((p) => [...p, { id: `f-${counter}`, kind: "final", body: ev.answer }]);
-      } else if (ev.kind === "end") {
-        setStatus(ev.status);
-        es.close();
-        // Freeze the timer immediately so the user sees a final total even if
-        // the canonical fetch is slow or fails.
-        setFinishedAt((prev) => prev ?? new Date().toISOString());
-        // Then replace with the server's canonical finished_at when it arrives.
-        api
-          .getRun(runId)
-          .then(({ run }) => {
-            if (run.finished_at) setFinishedAt(run.finished_at);
-          })
-          .catch(() => {
-            // ignore — terminal-state finalisation is best-effort
-          });
-      }
-    };
-    es.onerror = () => {
-      es.close();
-    };
-
-    return () => es.close();
-    // The callbacks (onBlockStatus, onStats) are intentionally omitted —
-    // we only want to (re)open the EventSource when the runId itself
-    // changes. Phase 5 should hoist this whole effect into a
-    // state/useRunStream hook so the dependency story is explicit.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [runId]);
+  const { entries, status, paused, pauseInfo, pageState, memory, startedAt, finishedAt } =
+    useRunStream(runId, { onStats, onBlockStatus });
 
   useEffect(() => {
     scrollerRef.current?.scrollTo({ top: scrollerRef.current.scrollHeight });
@@ -578,9 +330,6 @@ function Label({ children }: { children: ReactNode }) {
   return <div className="text-[10px] uppercase tracking-wider text-zinc-500">{children}</div>;
 }
 
-// parseSqliteUtc + formatDuration moved to web/src/state/parseSqliteUtc.ts —
-// re-imported below alongside other top-level imports.
-
 function computeElapsed(
   startedAt: string | null,
   finishedAt: string | null,
@@ -590,14 +339,4 @@ function computeElapsed(
   if (start === null) return null;
   const end = parseSqliteUtc(finishedAt) ?? now;
   return formatDuration(end - start);
-}
-
-function renderBody(kind: string, payload: Record<string, unknown>): string {
-  const asStr = (v: unknown) => (typeof v === "string" ? v : "");
-  if (kind === "thought") return asStr(payload.text);
-  if (kind === "tool_call") return JSON.stringify(payload.args ?? {}, null, 2);
-  if (kind === "tool_result") return asStr(payload.text);
-  if (kind === "error") return asStr(payload.error);
-  if (kind === "final") return asStr(payload.answer);
-  return JSON.stringify(payload);
 }

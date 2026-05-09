@@ -10,9 +10,7 @@ import { initialSchema } from "./001_initial_schema.ts";
  * everywhere) so applying it to an existing DB that pre-dates this
  * framework is a no-op modulo the schema_versions row.
  */
-export const MIGRATIONS: Migration[] = [
-  { id: "001-initial-schema", up: initialSchema },
-];
+export const MIGRATIONS: Migration[] = [{ id: "001-initial-schema", up: initialSchema }];
 
 export type Migration = {
   /** Stable id recorded in schema_versions. Format: `NNN-kebab-name`. */
@@ -56,9 +54,7 @@ export function applyMigrations(db: DatabaseSync): { applied: string[]; skipped:
       applied.push(m.id);
     } catch (e) {
       db.exec("ROLLBACK");
-      throw new Error(
-        `migration ${m.id} failed: ${e instanceof Error ? e.message : String(e)}`,
-      );
+      throw new Error(`migration ${m.id} failed: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
 

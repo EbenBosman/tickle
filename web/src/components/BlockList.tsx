@@ -329,9 +329,7 @@ function BlockBody({
               className={inputCls}
               value={block.role ?? "any"}
               disabled={disabled}
-              onChange={(e) =>
-                onChange({ role: e.target.value as (typeof CLICK_ROLES)[number] })
-              }
+              onChange={(e) => onChange({ role: e.target.value as (typeof CLICK_ROLES)[number] })}
             >
               {CLICK_ROLES.map((r) => (
                 <option key={r} value={r}>
@@ -414,9 +412,7 @@ function BlockBody({
               className={inputCls}
               value={block.on_fail ?? "halt"}
               disabled={disabled}
-              onChange={(e) =>
-                onChange({ on_fail: e.target.value as "halt" | "pause" })
-              }
+              onChange={(e) => onChange({ on_fail: e.target.value as "halt" | "pause" })}
             >
               <option value="halt">halt run</option>
               <option value="pause">pause run</option>

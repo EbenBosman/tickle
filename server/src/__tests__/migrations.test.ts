@@ -56,9 +56,8 @@ describe("applyMigrations — idempotency", () => {
     applyMigrations(db);
     applyMigrations(db);
 
-    const count = (
-      db.prepare("SELECT COUNT(*) AS n FROM schema_versions").get() as { n: number }
-    ).n;
+    const count = (db.prepare("SELECT COUNT(*) AS n FROM schema_versions").get() as { n: number })
+      .n;
     expect(count).toBe(MIGRATIONS.length);
   });
 });

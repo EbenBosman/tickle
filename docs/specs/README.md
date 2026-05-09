@@ -86,7 +86,6 @@ Issues surfaced while specifying the modules. Each is captured in detail in the 
 - 🟠 **Frontend domain duplication** — `web/src/blocks.ts` mirrors `server/src/blocks.ts` (types, `newBlock`, defaults). Post-refactor: shared `domain/`.
 - 🟡 **`SseEvent` union: web side still inline.** Server now has a canonical `domain/run.ts` (`StepKind`, `EndEvent`, `LIVE_ONLY_KINDS`). Web's `RunView.tsx` carries its own copy of the SSE event shape. Cross-workspace import is the same blocker as the `VALID_MODELS` split below.
 - 🟡 **`VALID_MODELS` server/web split** — server's `domain/models.ts` is now the source of truth; web's `SettingsPage.tsx::MODELS` carries the richer label/cost metadata for display and is marked `keep-in-sync`. A cross-workspace shared `domain/` would unify them; deferred until tsconfig project references or a `shared/` workspace land.
-- 🟠 **EventSource lives in `RunView.tsx`, not in a hook.** `_LAYERS.md` calls for `state/useRunStream.ts`.
 
 ### Bookkeeping
 
@@ -137,3 +136,4 @@ Items fixed since the original Phase 2 pass. Each links to its regression test.
 - **`statusMap` / `runningBlockId` not propagated into `for_each.body`.** The recursive `<BlockList>` in `BlockBody`'s `for_each` case now receives both props, so inner blocks show running/done state during a run.
 - **`goal.max_steps` in schema but no UI input.** Goal blocks now show an optional "Max LLM turns" number input (default 12, range 1–100) wired to `block.max_steps`.
 - **`web/src/blocks.ts::newBlock` non-UUID fallback.** Replaced with an RFC 4122 v4-shaped Math.random fallback so ids match the server's UUID shape regardless of `crypto.randomUUID` availability. Regression test asserts every generated id matches the v4 regex.
+- **EventSource trapped in `RunView.tsx`.** Extracted to `web/src/state/useRunStream.ts`. The hook owns the EventSource lifecycle, the bootstrap `getRun` fetch, the SSE event parsing, and the entry-list / paused / pageState / memory / startedAt / finishedAt state. Callbacks (onStats, onBlockStatus) flow through a ref so they don't force the effect to re-run. RunView now consumes the hook and stays focused on presentation; `renderBody` is exported as `renderStepBody` from the hook module.
