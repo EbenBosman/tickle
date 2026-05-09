@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS tasks (
 CREATE TABLE IF NOT EXISTS runs (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
   task_id     INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
-  status      TEXT NOT NULL,
+  status      TEXT NOT NULL CHECK (status IN ('running', 'done', 'error', 'cancelled')),
   result      TEXT,
   error       TEXT,
   started_at  TEXT NOT NULL DEFAULT (datetime('now')),
@@ -72,6 +72,21 @@ const taskCols = db.prepare("PRAGMA table_info(tasks)").all() as { name: string 
 if (!taskCols.some((c) => c.name === "steps")) {
   db.exec("ALTER TABLE tasks ADD COLUMN steps TEXT");
 }
+
+// CHECK constraint on `runs.status` is in CREATE TABLE for fresh DBs, but
+// SQLite can't ALTER an existing table to add it. Triggers enforce the same
+// invariant on existing DBs and are idempotent via IF NOT EXISTS.
+db.exec(`
+CREATE TRIGGER IF NOT EXISTS runs_status_check_insert
+  BEFORE INSERT ON runs
+  WHEN NEW.status NOT IN ('running', 'done', 'error', 'cancelled')
+  BEGIN SELECT RAISE(ABORT, 'invalid runs.status: must be running|done|error|cancelled'); END;
+
+CREATE TRIGGER IF NOT EXISTS runs_status_check_update
+  BEFORE UPDATE OF status ON runs
+  WHEN NEW.status NOT IN ('running', 'done', 'error', 'cancelled')
+  BEGIN SELECT RAISE(ABORT, 'invalid runs.status: must be running|done|error|cancelled'); END;
+`);
 
 // On every process start, sweep any rows still marked `running`. They can only
 // be from a previous process lifetime — tsx-watch reload, crash, OS restart —

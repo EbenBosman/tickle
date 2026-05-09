@@ -198,6 +198,105 @@ describe("POST /api/tasks/:id/run", () => {
     };
     expect(row.status).toBe("cancelled");
   });
+
+  it("returns 409 when another run is already in progress (single-run invariant)", async () => {
+    const taskId = await makeTask();
+    const release = gatedRun();
+    const first = await app.inject({
+      method: "POST",
+      url: `/api/tasks/${taskId}/run`,
+      payload: {},
+    });
+    expect(first.statusCode).toBe(200);
+    const firstRunId = first.json().run_id;
+
+    // Second start while the first is gated open should be refused.
+    const second = await app.inject({
+      method: "POST",
+      url: `/api/tasks/${taskId}/run`,
+      payload: {},
+    });
+    expect(second.statusCode).toBe(409);
+    const body = second.json();
+    expect(body.active_run_id).toBe(firstRunId);
+    expect(body.error).toMatch(/another run/i);
+
+    const ended = awaitEnd(firstRunId);
+    release();
+    await ended;
+
+    // After the first finishes, a fresh start succeeds.
+    const release2 = gatedRun();
+    const third = await app.inject({
+      method: "POST",
+      url: `/api/tasks/${taskId}/run`,
+      payload: {},
+    });
+    expect(third.statusCode).toBe(200);
+    const thirdEnded = awaitEnd(third.json().run_id);
+    release2();
+    await thirdEnded;
+  });
+
+  it("blocks even cross-task: a run on task A blocks a start on task B", async () => {
+    const taskA = await makeTask();
+    const taskB = await makeTask();
+    const release = gatedRun();
+    const a = await app.inject({
+      method: "POST",
+      url: `/api/tasks/${taskA}/run`,
+      payload: {},
+    });
+    expect(a.statusCode).toBe(200);
+    const b = await app.inject({
+      method: "POST",
+      url: `/api/tasks/${taskB}/run`,
+      payload: {},
+    });
+    expect(b.statusCode).toBe(409);
+
+    const ended = awaitEnd(a.json().run_id);
+    release();
+    await ended;
+  });
+});
+
+describe("runs.status CHECK constraint", () => {
+  it("rejects an INSERT with an invalid status", async () => {
+    const info = db
+      .prepare("INSERT INTO tasks (name, instruction) VALUES (?, ?)")
+      .run("x", "y");
+    const taskId = Number(info.lastInsertRowid);
+    expect(() =>
+      db.prepare("INSERT INTO runs (task_id, status) VALUES (?, ?)").run(taskId, "garbage"),
+    ).toThrow(/invalid runs.status/i);
+  });
+
+  it("rejects an UPDATE that sets an invalid status", async () => {
+    const info = db
+      .prepare("INSERT INTO tasks (name, instruction) VALUES (?, ?)")
+      .run("x", "y");
+    const taskId = Number(info.lastInsertRowid);
+    const runInfo = db
+      .prepare("INSERT INTO runs (task_id, status) VALUES (?, 'running')")
+      .run(taskId);
+    const runId = Number(runInfo.lastInsertRowid);
+    expect(() =>
+      db.prepare("UPDATE runs SET status = ? WHERE id = ?").run("borked", runId),
+    ).toThrow(/invalid runs.status/i);
+  });
+
+  it("accepts each of the four valid values", async () => {
+    const info = db
+      .prepare("INSERT INTO tasks (name, instruction) VALUES (?, ?)")
+      .run("x", "y");
+    const taskId = Number(info.lastInsertRowid);
+    for (const s of ["running", "done", "error", "cancelled"]) {
+      expect(() =>
+        db.prepare("INSERT INTO runs (task_id, status) VALUES (?, ?)").run(taskId, s),
+      ).not.toThrow();
+    }
+  });
 });
 
 describe("GET /api/runs/:id", () => {

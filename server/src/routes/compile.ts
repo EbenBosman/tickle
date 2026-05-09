@@ -131,11 +131,21 @@ function sanitiseBlock(raw: RawBlock): Block | null {
   return null;
 }
 
+/** Hard cap on user prompt length. Prevents accidental token-budget blow-ups
+ * and gives prompt-injection a smaller surface (a few pages of natural-language
+ * task description is the legitimate use case). */
+export const MAX_COMPILE_PROMPT_CHARS = 8000;
+
 export async function compileRoutes(app: FastifyInstance) {
   app.post<{ Body: { prompt?: string } }>("/api/blocks/compile", async (req, reply) => {
     const prompt = String(req.body?.prompt ?? "").trim();
     if (!prompt) {
       return { blocks: [] as Block[] };
+    }
+    if (prompt.length > MAX_COMPILE_PROMPT_CHARS) {
+      return reply.code(413).send({
+        error: `prompt too long (max ${MAX_COMPILE_PROMPT_CHARS} chars, got ${prompt.length})`,
+      });
     }
 
     const client = newLlmClient();

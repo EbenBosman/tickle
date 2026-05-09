@@ -37,6 +37,22 @@ export async function runsRoutes(app: FastifyInstance) {
       | undefined;
     if (!task) return reply.code(404).send({ error: "task not found" });
 
+    // Single-run invariant: only one run executes at a time because the
+    // Chromium context is shared across runs (CLAUDE.md::Quirks). A second
+    // POST while another run is `running` would race on the shared tab.
+    // The startup sweep in db.ts clears stale `running` rows from previous
+    // process lifetimes, so this query reflects only currently live runs.
+    const active = db.prepare("SELECT id, task_id FROM runs WHERE status = 'running' LIMIT 1").get() as
+      | { id: number; task_id: number }
+      | undefined;
+    if (active) {
+      return reply.code(409).send({
+        error: `another run is in progress (run ${active.id}, task ${active.task_id}) — cancel it first`,
+        active_run_id: active.id,
+        active_task_id: active.task_id,
+      });
+    }
+
     const info = db
       .prepare("INSERT INTO runs (task_id, status) VALUES (?, 'running')")
       .run(task.id);

@@ -141,8 +141,7 @@ describe("read_text — clamping", () => {
 // `extractVisibleText`, which evaluates `__extractVisibleTextFnSource`.
 describe("read_text — unified walker (also covers fetch_url)", () => {
   it("strips elements whose text colour matches the background colour", async () => {
-    const html =
-      '<p>Visible</p><p style="color:#ff0000;background-color:#ff0000">SECRET</p>';
+    const html = '<p>Visible</p><p style="color:#ff0000;background-color:#ff0000">SECRET</p>';
     const text = await readText(html);
     expect(text).toContain("Visible");
     expect(text).not.toContain("SECRET");
@@ -150,8 +149,7 @@ describe("read_text — unified walker (also covers fetch_url)", () => {
 
   it("strips elements whose computed bounding rect is zero", async () => {
     // width:0;height:0;overflow:hidden collapses the box to a zero rect.
-    const html =
-      '<p>Visible</p><p style="width:0;height:0;overflow:hidden">SECRET</p>';
+    const html = '<p>Visible</p><p style="width:0;height:0;overflow:hidden">SECRET</p>';
     const text = await readText(html);
     expect(text).toContain("Visible");
     expect(text).not.toContain("SECRET");

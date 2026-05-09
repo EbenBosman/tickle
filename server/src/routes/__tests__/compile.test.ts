@@ -177,6 +177,25 @@ describe("POST /api/blocks/compile — error responses", () => {
   });
 });
 
+describe("POST /api/blocks/compile — input length cap", () => {
+  it("returns 413 when prompt exceeds MAX_COMPILE_PROMPT_CHARS", async () => {
+    const { MAX_COMPILE_PROMPT_CHARS } = await import("../../routes/compile.ts");
+    const prompt = "a".repeat(MAX_COMPILE_PROMPT_CHARS + 1);
+    const res = await compile(prompt);
+    expect(res.statusCode).toBe(413);
+    expect(res.json().error).toContain("too long");
+    expect(llmState.lastCallOpts).toBeNull(); // LLM not called
+  });
+
+  it("accepts a prompt at exactly the cap", async () => {
+    const { MAX_COMPILE_PROMPT_CHARS } = await import("../../routes/compile.ts");
+    setLlmContent('{"blocks":[]}');
+    const prompt = "a".repeat(MAX_COMPILE_PROMPT_CHARS);
+    const res = await compile(prompt);
+    expect(res.statusCode).toBe(200);
+  });
+});
+
 describe("POST /api/blocks/compile — chatOnce options", () => {
   it("passes temperature 0.1 and think: false (single-turn JSON, no thinking)", async () => {
     setLlmContent('{"blocks":[]}');

@@ -125,6 +125,30 @@ describe("GET /api/lessons", () => {
     expect(body.lessons).toEqual([]);
     expect(body.total).toBe(0);
   });
+
+  it("clamps a non-numeric ?limit= to the default 50 (no NaN slip)", async () => {
+    const res = await app.inject({ method: "GET", url: "/api/lessons?limit=banana" });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().lessons).toEqual([]);
+  });
+
+  it("clamps an over-large ?limit= to 200", async () => {
+    const res = await app.inject({ method: "GET", url: "/api/lessons?limit=99999" });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().lessons).toEqual([]);
+  });
+
+  it("clamps a negative ?limit= to the default 50", async () => {
+    const res = await app.inject({ method: "GET", url: "/api/lessons?limit=-5" });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().lessons).toEqual([]);
+  });
+
+  it("clamps a non-numeric ?offset= to 0", async () => {
+    const res = await app.inject({ method: "GET", url: "/api/lessons?offset=banana" });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().lessons).toEqual([]);
+  });
 });
 
 describe("DELETE /api/lessons/:id", () => {

@@ -227,10 +227,7 @@ const EXTRACT_VISIBLE_TEXT_FN_SOURCE = `
 /** Public so tests can verify the walker behaves identically for both consumers. */
 export const __extractVisibleTextFnSource = EXTRACT_VISIBLE_TEXT_FN_SOURCE;
 
-async function extractVisibleText(
-  page: Session["page"],
-  selector: string | null,
-): Promise<string> {
+async function extractVisibleText(page: Session["page"], selector: string | null): Promise<string> {
   // Build the walker inside the page and call it. We pass the source as a
   // string so both `read_text` and `fetch_url` use the exact same code.
   return await page.evaluate<string, [string, string | null]>(
@@ -238,9 +235,7 @@ async function extractVisibleText(
       // Wrap in parens so ASI doesn't turn `return\n(function...)` into
       // `return; (function...)` and discard the function expression.
       // eslint-disable-next-line @typescript-eslint/no-implied-eval
-      const factory = new Function("return (" + fnSrc + ");") as () => (
-        s: string | null,
-      ) => string;
+      const factory = new Function("return (" + fnSrc + ");") as () => (s: string | null) => string;
       const fn = factory();
       return fn(sel);
     },

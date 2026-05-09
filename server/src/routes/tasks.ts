@@ -52,7 +52,13 @@ export async function tasksRoutes(app: FastifyInstance) {
       | Task
       | undefined;
     if (!existing) return reply.code(404).send({ error: "not found" });
-    const name = req.body.name?.trim() ?? existing.name;
+    // Empty-string or whitespace-only name is treated as omitted (keep the
+    // existing). Mirrors POST validation, which rejects empty names. `??`
+    // wouldn't help here because it only catches null/undefined, not "".
+    const candidateName = req.body.name?.trim();
+    // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing
+    const name = candidateName || existing.name;
+    // Instruction has no such constraint; an empty string is a valid clear.
     const instruction = req.body.instruction?.trim() ?? existing.instruction;
     const stepsJson = Array.isArray(req.body.steps)
       ? JSON.stringify(req.body.steps)
@@ -66,8 +72,9 @@ export async function tasksRoutes(app: FastifyInstance) {
     return db.prepare("SELECT * FROM tasks WHERE id = ?").get(req.params.id);
   });
 
-  app.delete<{ Params: { id: string } }>("/api/tasks/:id", async (req) => {
-    db.prepare("DELETE FROM tasks WHERE id = ?").run(req.params.id);
+  app.delete<{ Params: { id: string } }>("/api/tasks/:id", async (req, reply) => {
+    const result = db.prepare("DELETE FROM tasks WHERE id = ?").run(req.params.id);
+    if (result.changes === 0) return reply.code(404).send({ error: "not found" });
     return { ok: true };
   });
 }

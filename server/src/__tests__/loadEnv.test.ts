@@ -184,10 +184,9 @@ describe("loadEnv — error handling", () => {
     });
     // The candidate exists, but reading it is denied.
     fsState.files.set(SERVER_ENV, "TEST_K1=should-not-load\n");
-    const eacces: NodeJS.ErrnoException = Object.assign(
-      new Error("permission denied"),
-      { code: "EACCES" },
-    );
+    const eacces: NodeJS.ErrnoException = Object.assign(new Error("permission denied"), {
+      code: "EACCES",
+    });
     fsState.readErrors.set(SERVER_ENV, eacces);
 
     await expect(loadFresh()).resolves.not.toThrow();
@@ -228,10 +227,9 @@ describe("loadEnv — error handling", () => {
     // server/.env is unreadable; repo-root /.env is fine.
     fsState.files.set(SERVER_ENV, "TEST_K1=server\n");
     fsState.files.set(ROOT_ENV, "TEST_K1=root\n");
-    const eacces: NodeJS.ErrnoException = Object.assign(
-      new Error("permission denied"),
-      { code: "EACCES" },
-    );
+    const eacces: NodeJS.ErrnoException = Object.assign(new Error("permission denied"), {
+      code: "EACCES",
+    });
     fsState.readErrors.set(SERVER_ENV, eacces);
 
     await loadFresh();

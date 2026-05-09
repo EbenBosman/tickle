@@ -45,8 +45,18 @@ export async function settingsRoutes(app: FastifyInstance) {
   });
 
   app.get("/api/lessons", async (req) => {
-    const { offset = "0", limit = "50" } = req.query as { offset?: string; limit?: string };
-    return listLessons(Number(offset), Math.min(Number(limit), 200));
+    const { offset, limit } = req.query as { offset?: string; limit?: string };
+    const offsetN = (() => {
+      const n = Number(offset);
+      return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+    })();
+    const limitN = (() => {
+      const n = Number(limit);
+      // NaN, negative, zero -> default 50; otherwise clamp to [1, 200].
+      if (!Number.isFinite(n) || n <= 0) return 50;
+      return Math.min(Math.floor(n), 200);
+    })();
+    return listLessons(offsetN, limitN);
   });
 
   app.delete("/api/lessons/:id", async (req, _reply) => {

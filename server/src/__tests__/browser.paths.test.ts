@@ -65,8 +65,7 @@ describe("storage paths — TICKLE_PROFILE_DIR override", () => {
   it("returns an absolute env value unchanged", async () => {
     // Use a platform-appropriate absolute path so the test passes on
     // both POSIX and Windows.
-    const abs =
-      process.platform === "win32" ? "C:\\custom\\profile" : "/abs/path/profile";
+    const abs = process.platform === "win32" ? "C:\\custom\\profile" : "/abs/path/profile";
     process.env.TICKLE_PROFILE_DIR = abs;
     const { PROFILE_DIR } = await loadStorage();
     expect(PROFILE_DIR).toBe(abs);
@@ -87,8 +86,7 @@ describe("storage paths — TICKLE_PROFILE_DIR override", () => {
 
 describe("storage paths — TICKLE_SHOTS_DIR override", () => {
   it("returns an absolute env value unchanged", async () => {
-    const abs =
-      process.platform === "win32" ? "C:\\custom\\shots" : "/abs/path/shots";
+    const abs = process.platform === "win32" ? "C:\\custom\\shots" : "/abs/path/shots";
     process.env.TICKLE_SHOTS_DIR = abs;
     const { SHOTS_DIR } = await loadStorage();
     expect(SHOTS_DIR).toBe(abs);

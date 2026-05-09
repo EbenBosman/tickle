@@ -78,11 +78,6 @@ Issues surfaced while specifying the modules. Each is captured in detail in the 
 - 🟠 **`page_state` and `stats` events not persisted.** CLAUDE.md "Storage" claims all events get a `steps` row; in fact `page_state` and `stats` are emitted live only. SSE clients reconnecting via replay miss them entirely.
 - 🟠 **`runClaudeRescue` bypasses the in-memory step counter.** Re-prepares its own INSERT and computes `stepIdx` via `SELECT MAX(idx)+1`. Latent race with the main run if any concurrency emerges.
 - 🟠 **`CompileFromText` preview lacks danger affordances.** The "human-review-before-execute" injection defence per `http-compile.md` §6 is load-bearing, but the preview is a plain `<ol>` of `kind` + summary — no off-host `navigate` banner, no credential-pattern flag. Makes review a rubber-stamp.
-- 🟠 **Single-run invariant not enforced.** A second `POST /api/tasks/:id/run` while one is running succeeds and races on the shared Chromium context.
-- 🟠 **`PUT /api/tasks/:id` `name: ""` overwrites.** `??` semantics vs intended `||`. Empty-string survives where it shouldn't.
-- 🟠 **`DELETE /api/tasks/:id` returns 200 for unknown ids** — inconsistent with GET/PUT, which return 404.
-- 🟠 **`Math.min(NaN, 200)` lets bad `?limit=`** through `/api/lessons` unclamped.
-- 🟠 **`/api/blocks/compile` has no input length cap** and no injection-resistant framing — user free text is interpolated directly into the user message. The shape sanitiser + editor-review-before-execute is the only defence.
 - 🟠 **`statusMap`/`runningBlockId` not propagated into `for_each.body`** — inner blocks never show running/done state during a run.
 - 🟠 **`goal.max_steps`** in the schema but no UI input — silent server-only field.
 - 🟠 **`BlockBody` switch has no `default`** — unknown `kind` renders empty and likely throws on `meta.color` lookup.
@@ -103,10 +98,6 @@ Issues surfaced while specifying the modules. Each is captured in detail in the 
 - 🟠 **`VALID_MODELS` duplicated** — `routes/settings.ts` and `web/src/components/SettingsPage.tsx`.
 - 🟠 **Two diverging text walkers** in `tools.ts` (already listed under bugs) — same root cause as the duplications above.
 - 🟠 **EventSource lives in `RunView.tsx`, not in a hook.** `_LAYERS.md` calls for `state/useRunStream.ts`.
-
-### Security
-
-- 🟠 **`runs.status` has no CHECK constraint** — any string accepted, type guarantee is at the application layer only.
 
 ### Concurrency / consistency
 
@@ -145,3 +136,9 @@ Items fixed since the original Phase 2 pass. Each links to its regression test.
 - **Visibility check inconsistency.** New `server/src/visibility.ts` exports `isVisuallyHidden(style, rect?)` with `parseFloat(opacity) === 0`. `formScan.ts` and `loginDetect.ts` keep their inline `page.evaluate` copies (mirrored logic, marked `keep-in-sync: visibility.ts`) so the same `0.0` / `0.00` opacity case is caught in both. Regression: `server/src/__tests__/loginDetect.test.ts`.
 - **Snapshot doesn't filter `aria-hidden="true"`.** `snapshot.ts::isVisible` now rejects elements with an `aria-hidden="true"` ancestor via `el.closest("[aria-hidden='true']")`. `aria-hidden="false"` does NOT hide. Regression: `server/src/__tests__/snapshot.test.ts`.
 - **DOM `data-tickle-id` mutation side effects.** Both `snapshot.ts` and `formScan.ts` now strip stale `[data-tickle-id]` attributes at the top of each `page.evaluate` block before retagging. Verified safe: `act` resolves ids strictly within one snapshot→act window. Regression: `server/src/__tests__/snapshot.test.ts`.
+- **Single-run invariant.** `POST /api/tasks/:id/run` rejects with 409 when any run (any task) is already `running`. Necessary because the Chromium context is shared across runs (CLAUDE.md::Quirks). The startup `running`-row sweep in `db.ts` keeps stale rows from blocking real starts. Regression: `server/src/routes/__tests__/runs.test.ts`.
+- **`PUT /api/tasks/:id` `name: ""` overwrite.** Empty-string and whitespace-only names are treated as omitted; the existing name is preserved. Empty `instruction` still clears (no equivalent constraint). Regression: `server/src/routes/__tests__/tasks.test.ts`.
+- **`DELETE /api/tasks/:id` 200 for unknown ids.** Now returns 404, consistent with GET/PUT. Regression: `server/src/routes/__tests__/tasks.test.ts`.
+- **`Math.min(NaN, 200)` lets bad `?limit=` through.** `/api/lessons` now coerces `?offset=` and `?limit=` to finite positive numbers; non-numeric / negative / zero `limit` falls back to the default 50; `limit > 200` clamps to 200. Regression: `server/src/routes/__tests__/settings.test.ts`.
+- **`/api/blocks/compile` no input length cap.** New `MAX_COMPILE_PROMPT_CHARS = 8000` cap; over-cap requests return 413 without invoking the LLM. Regression: `server/src/routes/__tests__/compile.test.ts`.
+- **`runs.status` no CHECK constraint.** New table-level CHECK on fresh DBs plus matching INSERT/UPDATE triggers (`runs_status_check_*`) to cover existing DBs where SQLite can't ALTER the constraint in. Regression: `server/src/routes/__tests__/runs.test.ts`.

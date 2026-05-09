@@ -221,7 +221,7 @@ export async function scanForm(session: Session): Promise<FormScan> {
       const labelledBy = el.getAttribute("aria-labelledby");
       if (labelledBy) {
         const ref = document.getElementById(labelledBy);
-        if (ref) return ((ref).innerText || ref.textContent || "").trim();
+        if (ref) return (ref.innerText || ref.textContent || "").trim();
       }
       return "";
     };
@@ -372,7 +372,7 @@ export async function scanForm(session: Session): Promise<FormScan> {
     };
 
     const root = pickRoot();
-    const allMatched = Array.from((root).querySelectorAll(SELECTOR))
+    const allMatched = Array.from(root.querySelectorAll(SELECTOR))
       .filter(isVisible)
       .filter((el) => !isInsideNonFormRegion(el));
 

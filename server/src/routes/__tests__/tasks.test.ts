@@ -163,12 +163,47 @@ describe("DELETE /api/tasks/:id", () => {
     expect(get.statusCode).toBe(404);
   });
 
-  it("returns 200 even for an unknown id (idempotent delete)", async () => {
-    // Drift per docs/specs/server/http-tasks.md §6: DELETE returns 200
-    // for unknown ids, inconsistent with GET/PUT 404. Pin current
-    // behaviour so the eventual fix is observable.
+  it("returns 404 for an unknown id (consistent with GET/PUT)", async () => {
     const res = await app.inject({ method: "DELETE", url: "/api/tasks/9999" });
+    expect(res.statusCode).toBe(404);
+  });
+});
+
+describe("PUT /api/tasks/:id — empty-string name guard", () => {
+  it("preserves the existing name when body sends name: ''", async () => {
+    const create = await createTask({ name: "real-name", instruction: "x" });
+    const id = create.json().id;
+    const res = await app.inject({
+      method: "PUT",
+      url: `/api/tasks/${id}`,
+      payload: { name: "" },
+    });
     expect(res.statusCode).toBe(200);
+    expect(res.json().name).toBe("real-name");
+  });
+
+  it("preserves the existing name when body sends whitespace-only name", async () => {
+    const create = await createTask({ name: "real-name", instruction: "x" });
+    const id = create.json().id;
+    const res = await app.inject({
+      method: "PUT",
+      url: `/api/tasks/${id}`,
+      payload: { name: "   " },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().name).toBe("real-name");
+  });
+
+  it("still allows an empty-string instruction to clear the field", async () => {
+    const create = await createTask({ name: "T", instruction: "old" });
+    const id = create.json().id;
+    const res = await app.inject({
+      method: "PUT",
+      url: `/api/tasks/${id}`,
+      payload: { instruction: "" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().instruction).toBe("");
   });
 });
 
