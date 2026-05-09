@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { createContext, useContext, useState, type ReactNode } from "react";
 import {
   type Block,
   type BlockKind,
@@ -7,6 +7,137 @@ import {
   BLOCK_KINDS,
   CLICK_ROLES,
 } from "../blocks.ts";
+
+/**
+ * Tree-wide drag context. Lifted out of the per-instance state so a drag
+ * that starts in an outer list and ends in a nested for_each.body (or
+ * vice versa) can complete: every BlockList sees the same `dragId` and
+ * delegates the move to the root, which mutates the whole tree.
+ */
+type DragApi = {
+  dragId: string | null;
+  setDragId: (id: string | null) => void;
+  /**
+   * Move the block with `sourceId` from wherever it lives in the tree
+   * to `beforeIdx` inside the children of `parentBlockId` (null = root).
+   * No-op if dragging a `for_each` into itself or its own descendants.
+   */
+  moveTo: (sourceId: string, parentBlockId: string | null, beforeIdx: number) => void;
+};
+
+const DragCtx = createContext<DragApi | null>(null);
+
+function findAndRemove(tree: Block[], id: string): { removed: Block | null; tree: Block[] } {
+  const idx = tree.findIndex((b) => b.id === id);
+  if (idx >= 0) {
+    const next = tree.slice();
+    const [removed] = next.splice(idx, 1);
+    return { removed, tree: next };
+  }
+  for (let i = 0; i < tree.length; i++) {
+    const b = tree[i];
+    if (b.kind === "for_each") {
+      const inner = findAndRemove(b.body, id);
+      if (inner.removed) {
+        const next = tree.slice();
+        next[i] = { ...b, body: inner.tree };
+        return { removed: inner.removed, tree: next };
+      }
+    }
+  }
+  return { removed: null, tree };
+}
+
+function insertAtPath(
+  tree: Block[],
+  parentBlockId: string | null,
+  beforeIdx: number,
+  block: Block,
+): Block[] {
+  if (parentBlockId === null) {
+    const next = tree.slice();
+    next.splice(beforeIdx, 0, block);
+    return next;
+  }
+  return tree.map((b) => {
+    if (b.kind !== "for_each") return b;
+    if (b.id === parentBlockId) {
+      const next = b.body.slice();
+      next.splice(beforeIdx, 0, block);
+      return { ...b, body: next };
+    }
+    return { ...b, body: insertAtPath(b.body, parentBlockId, beforeIdx, block) };
+  });
+}
+
+function isAncestor(block: Block, candidateDescendantId: string): boolean {
+  if (block.kind !== "for_each") return false;
+  for (const child of block.body) {
+    if (child.id === candidateDescendantId) return true;
+    if (isAncestor(child, candidateDescendantId)) return true;
+  }
+  return false;
+}
+
+function findBlock(tree: Block[], id: string): Block | null {
+  for (const b of tree) {
+    if (b.id === id) return b;
+    if (b.kind === "for_each") {
+      const inner = findBlock(b.body, id);
+      if (inner) return inner;
+    }
+  }
+  return null;
+}
+
+function findParent(
+  tree: Block[],
+  id: string,
+  currentParentId: string | null = null,
+): { parentId: string | null; idx: number } | null {
+  for (let i = 0; i < tree.length; i++) {
+    if (tree[i].id === id) return { parentId: currentParentId, idx: i };
+    const b = tree[i];
+    if (b.kind === "for_each") {
+      const inner = findParent(b.body, id, b.id);
+      if (inner) return inner;
+    }
+  }
+  return null;
+}
+
+export function moveBlockInTree(
+  tree: Block[],
+  sourceId: string,
+  parentBlockId: string | null,
+  beforeIdx: number,
+): Block[] {
+  // Refuse to drop a for_each into itself or its own descendants —
+  // would create an unreachable cycle.
+  if (parentBlockId !== null) {
+    const source = findBlock(tree, sourceId);
+    if (source && (source.id === parentBlockId || isAncestor(source, parentBlockId))) {
+      return tree;
+    }
+  }
+  // beforeIdx is supplied by callers as a position in the pre-removal
+  // array. When the source lives in the SAME list and comes before the
+  // drop point, removing it shifts subsequent indices down by one — we
+  // compensate so "drop after position 1" really means "land at the
+  // visual gap the user clicked".
+  const sourceLoc = findParent(tree, sourceId);
+  if (!sourceLoc) return tree;
+  let effectiveBefore = beforeIdx;
+  if (sourceLoc.parentId === parentBlockId && sourceLoc.idx < beforeIdx) {
+    effectiveBefore = beforeIdx - 1;
+  }
+  if (sourceLoc.parentId === parentBlockId && sourceLoc.idx === effectiveBefore) {
+    return tree;
+  }
+  const { removed, tree: pruned } = findAndRemove(tree, sourceId);
+  if (!removed) return tree;
+  return insertAtPath(pruned, parentBlockId, effectiveBefore, removed);
+}
 
 export type BlockStatusMap = Record<string, "pending" | "running" | "done" | "failed" | "skipped">;
 
@@ -44,18 +175,61 @@ const COLOR_LABEL: Record<string, string> = {
   rose: "text-rose-300",
 };
 
-export function BlockList({
-  blocks,
-  onChange,
-  statusMap,
-  runningBlockId,
-}: {
+export function BlockList(props: {
   blocks: Block[];
   onChange: (next: Block[]) => void;
   statusMap?: BlockStatusMap;
   runningBlockId?: string | null;
 }) {
+  // Outer BlockList: own the drag state + tree-mutating moveTo and
+  // hand it down via context so nested instances can drop into siblings.
   const [dragId, setDragId] = useState<string | null>(null);
+  const api: DragApi = {
+    dragId,
+    setDragId,
+    moveTo: (sourceId, parentBlockId, beforeIdx) => {
+      props.onChange(moveBlockInTree(props.blocks, sourceId, parentBlockId, beforeIdx));
+    },
+  };
+  return (
+    <DragCtx.Provider value={api}>
+      <BlockListInner
+        blocks={props.blocks}
+        onChange={props.onChange}
+        parentBlockId={null}
+        statusMap={props.statusMap}
+        runningBlockId={props.runningBlockId}
+      />
+    </DragCtx.Provider>
+  );
+}
+
+function NestedBlockList(props: {
+  blocks: Block[];
+  onChange: (next: Block[]) => void;
+  parentBlockId: string;
+  statusMap?: BlockStatusMap;
+  runningBlockId?: string | null;
+}) {
+  // Reused for the for_each.body recursion. Same DragCtx provider as the
+  // root, just a different parentBlockId so drops land in this body.
+  return <BlockListInner {...props} />;
+}
+
+function BlockListInner({
+  blocks,
+  onChange,
+  parentBlockId,
+  statusMap,
+  runningBlockId,
+}: {
+  blocks: Block[];
+  onChange: (next: Block[]) => void;
+  parentBlockId: string | null;
+  statusMap?: BlockStatusMap;
+  runningBlockId?: string | null;
+}) {
+  const drag = useContext(DragCtx);
 
   const update = (id: string, patch: Partial<Block>) => {
     onChange(blocks.map((b) => (b.id === id ? ({ ...b, ...patch } as Block) : b)));
@@ -68,14 +242,9 @@ export function BlockList({
     next.splice(idx, 0, block);
     onChange(next);
   };
-  const move = (id: string, beforeIdx: number) => {
-    const fromIdx = blocks.findIndex((b) => b.id === id);
-    if (fromIdx < 0 || fromIdx === beforeIdx || fromIdx === beforeIdx - 1) return;
-    const next = blocks.slice();
-    const [moved] = next.splice(fromIdx, 1);
-    const insertIdx = beforeIdx > fromIdx ? beforeIdx - 1 : beforeIdx;
-    next.splice(insertIdx, 0, moved);
-    onChange(next);
+  const onDrop = (beforeIdx: number) => {
+    if (!drag?.dragId) return;
+    drag.moveTo(drag.dragId, parentBlockId, beforeIdx);
   };
 
   return (
@@ -95,7 +264,7 @@ export function BlockList({
 
         return (
           <div key={block.id}>
-            <DropZone onDrop={() => dragId && move(dragId, idx)} />
+            <DropZone onDrop={() => onDrop(idx)} />
             <BlockCard
               block={block}
               index={idx}
@@ -107,13 +276,13 @@ export function BlockList({
               onChange={(patch) => update(block.id, patch)}
               onRemove={() => remove(block.id)}
               onAddBelow={(kind) => insertAt(idx + 1, newBlock(kind))}
-              onDragStart={() => setDragId(block.id)}
-              onDragEnd={() => setDragId(null)}
+              onDragStart={() => drag?.setDragId(block.id)}
+              onDragEnd={() => drag?.setDragId(null)}
             />
           </div>
         );
       })}
-      <DropZone onDrop={() => dragId && move(dragId, blocks.length)} />
+      <DropZone onDrop={() => onDrop(blocks.length)} />
     </div>
   );
 }
@@ -476,9 +645,10 @@ function BlockBody({
           </div>
           <div className="rounded border border-zinc-800/80 bg-zinc-950/40 p-2">
             <div className="mb-2 text-[10px] uppercase tracking-wider text-zinc-500">Body</div>
-            <BlockList
+            <NestedBlockList
               blocks={block.body}
               onChange={(body) => onChange({ body })}
+              parentBlockId={block.id}
               statusMap={statusMap}
               runningBlockId={runningBlockId}
             />

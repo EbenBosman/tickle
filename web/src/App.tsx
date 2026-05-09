@@ -303,9 +303,7 @@ function RecentRuns({ taskId, onOpen }: { taskId: number; onOpen: (id: number) =
   };
 
   const clearAll = async () => {
-    if (
-      !(await askConfirm(`Delete all ${runs.length} runs for this task?`, { destructive: true }))
-    )
+    if (!(await askConfirm(`Delete all ${runs.length} runs for this task?`, { destructive: true })))
       return;
     try {
       await api.clearTaskRuns(taskId, { resetIds: true });
