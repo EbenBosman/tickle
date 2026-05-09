@@ -25,7 +25,7 @@ import {
 } from "./pause.ts";
 import { trace } from "./log.ts";
 import { detectLoginPrompt } from "./loginDetect.ts";
-import { type Block, type BlockKind, parseBlocks, substituteVars } from "./blocks.ts";
+import { type Block, parseBlocks, substituteVars } from "./blocks.ts";
 import { scanForm, checkQuestionAnswered, type FormQuestion } from "./formScan.ts";
 import { asString } from "./coerce.ts";
 
@@ -53,51 +53,16 @@ function pruneOldImages(messages: Message[], keep: number): Message[] {
   });
 }
 
-export type BlockStatus = "pending" | "running" | "done" | "failed" | "skipped";
+export type { BlockStatus } from "../../shared/run.ts";
+import type { SseEvent } from "../../shared/run.ts";
 
-export type AgentEvent =
-  | {
-      kind: "block_start";
-      block_id: string;
-      block_kind: BlockKind;
-      summary: string;
-      path: string[];
-    }
-  | {
-      kind: "block_end";
-      block_id: string;
-      block_kind: BlockKind;
-      status: BlockStatus;
-      result?: string;
-      error?: string;
-      /** Optional structured payload — e.g. questionnaire's unanswered list. */
-      details?: unknown;
-      path: string[];
-    }
-  | { kind: "thought"; text: string; block_id?: string }
-  | { kind: "tool_call"; name: string; args: unknown; block_id?: string }
-  | {
-      kind: "tool_result";
-      name: string;
-      result: ToolResult;
-      screenshotPath?: string;
-      block_id?: string;
-    }
-  | { kind: "page_state"; url: string; title: string }
-  | {
-      kind: "stats";
-      model: string;
-      prompt_tokens: number;
-      output_tokens: number;
-      eval_duration_ms: number;
-      tps: number;
-    }
-  | { kind: "var_set"; name: string; preview: string }
-  | { kind: "remember"; note: string }
-  | { kind: "paused"; reason?: string; auto?: boolean }
-  | { kind: "resumed" }
-  | { kind: "error"; error: string; block_id?: string }
-  | { kind: "final"; answer: string };
+/**
+ * Events the AGENT emits. Subset of the wire-shape `SseEvent` — the
+ * agent never emits `end`; that's published by `routes/runs.ts` when
+ * the runs row reaches a terminal state. Web's `useRunStream` consumes
+ * the full `SseEvent` (which includes end).
+ */
+export type AgentEvent = Exclude<SseEvent, { kind: "end" }>;
 
 export type RunHandle = {
   run: Run;

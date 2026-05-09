@@ -1,113 +1,27 @@
 import { randomUUID } from "node:crypto";
+import type { Block, BlockKind } from "../../shared/blocks.ts";
 
-export type BlockKind =
-  | "navigate"
-  | "goal"
-  | "pause"
-  | "click"
-  | "fill"
-  | "extract"
-  | "verify"
-  | "questionnaire"
-  | "for_each";
+// Re-export the shared types and pure helpers so existing imports
+// (`from "./blocks.ts"`) keep working without churn.
+export type {
+  Block,
+  BlockKind,
+  ClickRole,
+  BaseBlock,
+  NavigateBlock,
+  GoalBlock,
+  PauseBlock,
+  ClickBlock,
+  FillBlock,
+  ExtractBlock,
+  VerifyBlock,
+  QuestionnaireBlock,
+  ForEachBlock,
+} from "../../shared/blocks.ts";
+export { substituteVars, countBlocks, walkBlocks, parseBlocksJson } from "../../shared/blocks.ts";
 
-/** ARIA roles offered as an optional filter on click/fill targets. */
-export type ClickRole =
-  | "any"
-  | "button"
-  | "link"
-  | "tab"
-  | "menuitem"
-  | "checkbox"
-  | "radio"
-  | "switch"
-  | "combobox"
-  | "option"
-  | "textbox";
-
-export interface BaseBlock {
-  id: string;
-  kind: BlockKind;
-  /** Set true to halt the run after this block completes successfully. */
-  pauseAfter?: boolean;
-}
-
-export interface NavigateBlock extends BaseBlock {
-  kind: "navigate";
-  url: string;
-}
-
-export interface GoalBlock extends BaseBlock {
-  kind: "goal";
-  description: string;
-  /** Maximum LLM turns allowed for this goal. Defaults to 12. */
-  max_steps?: number;
-}
-
-export interface PauseBlock extends BaseBlock {
-  kind: "pause";
-  message?: string;
-}
-
-export interface ClickBlock extends BaseBlock {
-  kind: "click";
-  /** Natural-language description of what to click. */
-  target: string;
-  /** Optional ARIA role filter; "any" means no constraint. */
-  role?: ClickRole;
-}
-
-export interface FillBlock extends BaseBlock {
-  kind: "fill";
-  target: string;
-  value: string; // may include $varName
-}
-
-export interface VerifyBlock extends BaseBlock {
-  kind: "verify";
-  /** Natural-language condition the AI checks against the current page. */
-  condition: string;
-  /** What to do if the condition is not met. Defaults to "halt". */
-  on_fail?: "halt" | "pause";
-}
-
-export interface QuestionnaireBlock extends BaseBlock {
-  kind: "questionnaire";
-  /** Optional context note prepended to discover/answer prompts. */
-  context?: string;
-  /** Variable name to write unanswered questions into (default `unanswered`). */
-  unanswered_var?: string;
-}
-
-export interface ExtractBlock extends BaseBlock {
-  kind: "extract";
-  /** What to extract, in natural language (e.g. "all visible product titles as a list"). */
-  target: string;
-  /** Variable name to write the result into. Other blocks reference it as $name. */
-  var_name: string;
-}
-
-export interface ForEachBlock extends BaseBlock {
-  kind: "for_each";
-  /** Variable name that holds an array, OR a natural-language description for AI extraction. */
-  items: string;
-  /** Variable name bound to the current item inside `body`. Defaults to `item`. */
-  item_var?: string;
-  body: Block[];
-}
-
-export type Block =
-  | NavigateBlock
-  | GoalBlock
-  | PauseBlock
-  | ClickBlock
-  | FillBlock
-  | ExtractBlock
-  | VerifyBlock
-  | QuestionnaireBlock
-  | ForEachBlock;
-
-/** Build a fresh block of the given kind with sensible defaults. */
+/** Build a fresh block of the given kind with sensible defaults.
+ *  Server-side `randomUUID` from node:crypto. */
 export function newBlock(kind: BlockKind): Block {
   const id = randomUUID();
   switch (kind) {
@@ -137,6 +51,16 @@ export function instructionToBlocks(instruction: string): Block[] {
   return [{ id: randomUUID(), kind: "goal", description: instruction.trim() }];
 }
 
+/**
+ * Parse `tasks.steps` JSON.
+ *
+ * Three distinct cases (preserved from pre-shared-types behaviour):
+ *   - null / empty input  → fallback to `instructionToBlocks` (or `[]`)
+ *   - JSON parse error    → fallback to `instructionToBlocks` (or `[]`)
+ *   - Parses to non-array → `[]`, even if fallback was provided. This
+ *     last case treats well-formed-but-shape-wrong JSON as "the user
+ *     emptied the steps" rather than "drop back to the legacy instruction".
+ */
 export function parseBlocks(json: string | null | undefined, fallbackInstruction = ""): Block[] {
   if (!json) {
     return fallbackInstruction.trim() ? instructionToBlocks(fallbackInstruction) : [];
@@ -146,35 +70,5 @@ export function parseBlocks(json: string | null | undefined, fallbackInstruction
     return Array.isArray(parsed) ? (parsed as Block[]) : [];
   } catch {
     return fallbackInstruction.trim() ? instructionToBlocks(fallbackInstruction) : [];
-  }
-}
-
-/** Replace `$varname` occurrences with the corresponding variable's string value. */
-export function substituteVars(input: string, vars: Map<string, unknown>): string {
-  if (!input.includes("$")) return input;
-  return input.replace(/\$([a-zA-Z_][a-zA-Z0-9_]*)/g, (match, name: string) => {
-    if (!vars.has(name)) return match;
-    const v = vars.get(name);
-    if (v === undefined) return "";
-    if (typeof v === "string") return v;
-    return JSON.stringify(v);
-  });
-}
-
-/** Recursively count blocks (including those nested in for_each.body). */
-export function countBlocks(blocks: Block[]): number {
-  let n = 0;
-  for (const b of blocks) {
-    n++;
-    if (b.kind === "for_each") n += countBlocks(b.body);
-  }
-  return n;
-}
-
-/** Walk every block, depth-first, calling visit on each. */
-export function walkBlocks(blocks: Block[], visit: (b: Block) => void): void {
-  for (const b of blocks) {
-    visit(b);
-    if (b.kind === "for_each") walkBlocks(b.body, visit);
   }
 }

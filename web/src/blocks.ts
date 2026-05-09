@@ -1,88 +1,23 @@
-export type BlockKind =
-  | "navigate"
-  | "goal"
-  | "pause"
-  | "click"
-  | "fill"
-  | "extract"
-  | "verify"
-  | "questionnaire"
-  | "for_each";
-
-export type ClickRole =
-  | "any"
-  | "button"
-  | "link"
-  | "tab"
-  | "menuitem"
-  | "checkbox"
-  | "radio"
-  | "switch"
-  | "combobox"
-  | "option"
-  | "textbox";
-
-export interface BaseBlock {
-  id: string;
-  kind: BlockKind;
-  pauseAfter?: boolean;
-}
-
-export interface NavigateBlock extends BaseBlock {
-  kind: "navigate";
-  url: string;
-}
-export interface GoalBlock extends BaseBlock {
-  kind: "goal";
-  description: string;
-  max_steps?: number;
-}
-export interface PauseBlock extends BaseBlock {
-  kind: "pause";
-  message?: string;
-}
-export interface ClickBlock extends BaseBlock {
-  kind: "click";
-  target: string;
-  role?: ClickRole;
-}
-export interface FillBlock extends BaseBlock {
-  kind: "fill";
-  target: string;
-  value: string;
-}
-export interface ExtractBlock extends BaseBlock {
-  kind: "extract";
-  target: string;
-  var_name: string;
-}
-export interface VerifyBlock extends BaseBlock {
-  kind: "verify";
-  condition: string;
-  on_fail?: "halt" | "pause";
-}
-export interface QuestionnaireBlock extends BaseBlock {
-  kind: "questionnaire";
-  context?: string;
-  unanswered_var?: string;
-}
-export interface ForEachBlock extends BaseBlock {
-  kind: "for_each";
-  items: string;
-  item_var?: string;
-  body: Block[];
-}
-
-export type Block =
-  | NavigateBlock
-  | GoalBlock
-  | PauseBlock
-  | ClickBlock
-  | FillBlock
-  | ExtractBlock
-  | VerifyBlock
-  | QuestionnaireBlock
-  | ForEachBlock;
+// Block types live in the cross-workspace `shared/blocks.ts` so server
+// and web share the contract. This module adds the web-only pieces:
+// UI metadata (icons, colors), the BLOCK_KINDS list ordering, the
+// browser-flavoured `newBlock`, and presentation helpers.
+import type { Block, BlockKind, ClickRole } from "../../shared/blocks.ts";
+export type {
+  Block,
+  BlockKind,
+  ClickRole,
+  BaseBlock,
+  NavigateBlock,
+  GoalBlock,
+  PauseBlock,
+  ClickBlock,
+  FillBlock,
+  ExtractBlock,
+  VerifyBlock,
+  QuestionnaireBlock,
+  ForEachBlock,
+} from "../../shared/blocks.ts";
 
 const KIND_META: Record<
   BlockKind,

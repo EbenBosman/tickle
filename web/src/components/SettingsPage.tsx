@@ -1,16 +1,18 @@
 import { useEffect, useState } from "react";
 import { api, type Settings, type Lesson } from "../api.ts";
+import { VALID_MODELS, type ValidModel } from "../../../shared/models.ts";
 
-// keep-in-sync: server/src/domain/models.ts. The `value` column must match
-// the server's VALID_MODELS allowlist exactly; the rich `label`/`cost`
-// metadata stays here because it's presentation-only. A run-time fetch
-// would also work but is overkill for a 3-element list that changes
-// rarely.
-const MODELS: { value: string; label: string; cost: string }[] = [
-  { value: "claude-haiku-4-5-20251001", label: "Haiku 4.5", cost: "~$0.02–0.08 / failed block" },
-  { value: "claude-sonnet-4-6", label: "Sonnet 4.6", cost: "~$0.10–0.30 / failed block" },
-  { value: "claude-opus-4-7", label: "Opus 4.7", cost: "~$0.50–1.50 / failed block" },
-];
+// `value` column comes from the shared allowlist; the rich label/cost
+// metadata stays here because it's presentation-only.
+const MODEL_META: Record<ValidModel, { label: string; cost: string }> = {
+  "claude-haiku-4-5-20251001": { label: "Haiku 4.5", cost: "~$0.02–0.08 / failed block" },
+  "claude-sonnet-4-6": { label: "Sonnet 4.6", cost: "~$0.10–0.30 / failed block" },
+  "claude-opus-4-7": { label: "Opus 4.7", cost: "~$0.50–1.50 / failed block" },
+};
+const MODELS: { value: ValidModel; label: string; cost: string }[] = VALID_MODELS.map((value) => ({
+  value,
+  ...MODEL_META[value],
+}));
 
 // ── Shared building blocks ─────────────────────────────────
 

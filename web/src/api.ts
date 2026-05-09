@@ -1,4 +1,5 @@
 import type { Block } from "./blocks.ts";
+import type { StepKind } from "../../shared/run.ts";
 
 export type Task = {
   id: number;
@@ -23,19 +24,7 @@ export type Step = {
   id: number;
   run_id: number;
   idx: number;
-  kind:
-    | "thought"
-    | "tool_call"
-    | "tool_result"
-    | "block_start"
-    | "block_end"
-    | "var_set"
-    | "remember"
-    | "error"
-    | "final"
-    | "page_state"
-    | "stats"
-    | "messages_export";
+  kind: StepKind;
   payload: string;
   screenshot_path: string | null;
   created_at: string;

@@ -1,15 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api.ts";
+import type { BlockStatus, RunStatsSample, SseEvent } from "../../../shared/run.ts";
 
-export type BlockStatus = "pending" | "running" | "done" | "failed" | "skipped";
-
-export type RunStatsSample = {
-  model: string;
-  prompt_tokens: number;
-  output_tokens: number;
-  eval_duration_ms: number;
-  tps: number;
-};
+export type { BlockStatus, RunStatsSample };
 
 export type Entry = {
   id: string;
@@ -43,47 +36,17 @@ export type RunStreamState = {
   finishedAt: string | null;
 };
 
+/**
+ * Wire-shape of the SSE stream the route emits. Replay frames carry a
+ * persisted step row; everything else is a live `SseEvent` from the
+ * shared union.
+ */
 type StreamEvent =
   | {
       replay: true;
       step: { idx: number; kind: string; payload: string; screenshot_path: string | null };
     }
-  | { kind: "thought"; text: string; block_id?: string }
-  | { kind: "tool_call"; name: string; args: unknown; block_id?: string }
-  | {
-      kind: "tool_result";
-      name: string;
-      result: { ok: boolean; text?: string; error?: string; data?: unknown };
-      screenshotPath?: string;
-      block_id?: string;
-    }
-  | { kind: "block_start"; block_id: string; block_kind: string; summary: string; path: string[] }
-  | {
-      kind: "block_end";
-      block_id: string;
-      block_kind: string;
-      status: BlockStatus;
-      result?: string;
-      error?: string;
-      details?: unknown;
-      path: string[];
-    }
-  | { kind: "var_set"; name: string; preview: string }
-  | { kind: "remember"; note: string }
-  | { kind: "page_state"; url: string; title: string }
-  | {
-      kind: "stats";
-      model: string;
-      prompt_tokens: number;
-      output_tokens: number;
-      eval_duration_ms: number;
-      tps: number;
-    }
-  | { kind: "paused"; reason?: string; auto?: boolean }
-  | { kind: "resumed" }
-  | { kind: "error"; error: string; block_id?: string }
-  | { kind: "final"; answer: string }
-  | { kind: "end"; status: string; result?: string; error?: string };
+  | SseEvent;
 
 /** Convert a persisted step's payload into the displayable string body. */
 export function renderStepBody(kind: string, payload: Record<string, unknown>): string {
