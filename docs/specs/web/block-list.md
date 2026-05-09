@@ -59,7 +59,7 @@ The bulk of the file is the `BlockBody` switch. Each row is a falsifiable claim 
 | Kind            | Exposed fields                                                                                                                  | Hidden / not exposed                                  | Validation                                                          | Drift |
 | --------------- | ------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- | ------------------------------------------------------------------- | ----- |
 | `navigate`      | `url` (single `<input type="url">`)                                                                                             | —                                                     | none (empty string allowed)                                         | —     |
-| `goal`          | `description` (textarea, monospace)                                                                                             | **`max_steps`** (server schema, never editable in UI) | none                                                                | ⚠️ §6 |
+| `goal`          | `description` (textarea, monospace), `max_steps` (optional number input, default 12, range 1–100)                               | —                                                     | `max_steps` clamped via the input range                            | —     |
 | `pause`         | `message` (single text input, optional)                                                                                         | —                                                     | none                                                                | —     |
 | `click`         | `target` (text), `role` (select over `CLICK_ROLES`)                                                                             | —                                                     | role constrained by `<select>`                                      | —     |
 | `fill`          | `target` (text), `value` (text; `$var` interpolated server-side)                                                                | —                                                     | none                                                                | —     |
@@ -74,18 +74,17 @@ All inputs receive `disabled={isLocked}`. All editable rows call `onChange({ fie
 
 - **Library:** none. Native HTML5 DnD only — `draggable`, `onDragStart/End`, `onDragOver/Leave/Drop`. No `react-dnd`, no `@hello-pangea/dnd`.
 - **State:** a single `useState<string | null>(dragId)` in the parent. Dropping anywhere with `dragId === null` is a no-op.
-- **Cross-`for_each` boundaries:** ⚠️ **not supported.** Each `BlockList` instance owns its own `dragId` state, so dragging a block out of a nested `for_each.body` into the parent list (or vice-versa) does not work — the outer list never sees the drag, the inner list's drop zones don't extend across the boundary.
+- **Cross-`for_each` boundaries:** supported. `dragId` is lifted into a `DragCtx` provider at the root, so a drag started in the outer list and dropped into a nested `for_each.body` (or vice-versa) completes via a single tree-mutating `moveBlockInTree(tree, sourceId, parentBlockId, beforeIdx)` helper. The helper refuses to drop a `for_each` into itself or its own descendants (cycle prevention). Same-list moves preserve their pre-removal-index semantics so the visual drop gap matches the user's intent. Regression: `web/src/__tests__/moveBlockInTree.test.ts`.
 - **Empty `for_each` body:** the recursive `<BlockList>` renders one terminal `<DropZone>` plus the "Add block" menu, so a user can drop a sibling-level block into an empty body via the inner top-level `AddBlockMenu`, but **not** by drag (see above).
 - **Visual feedback:** `DropZone` flips to `bg-emerald-500/40` while `dragOver` is true; the `e.preventDefault()` on `onDragOver` is what makes drop legal in HTML5 DnD.
 - **Locked blocks remain visible drop _targets_**, since drop zones are siblings of the cards, not children. They simply cannot be picked up.
 
 ## 6. Drift / open questions
 
-- ⚠️ **Drift — `goal.max_steps` is never exposed.** The schema has it (`web/src/blocks.ts` and `server/src/blocks.ts` both declare `max_steps?: number`), and `agent.ts` reads it, defaulting to 12. There is no input. Users who want a non-default cap must edit JSON directly. Either add a small numeric input on the `goal` editor or remove the field from the schema.
-- ⚠️ **Drift — `statusMap` and `runningBlockId` are not propagated into nested `for_each.body` lists.** Inner blocks always render with no status badge and never show the "running" pulse, even when the executor is currently inside them. Block IDs are unique across the whole task, so a nested block's status _could_ be looked up; the recursive `<BlockList>` call simply doesn't pass the props through. Visible bug for any user with `for_each` blocks during a run.
-- ⚠️ **Drift — unknown `kind` renders empty.** `BlockBody`'s switch has no `default` branch. A corrupted `tasks.steps` row with an unrecognised `kind` produces a card with a header (showing whatever `blockMeta(kind)` returns — likely `undefined.color` and a runtime error in the class string) and an empty body. Since `parseBlocks` does not validate (see `server/blocks.md` §6), this can happen. A defensive `default: return <UnknownBlockEditor />` is worth adding once `parseBlock` validation lands.
+- **Resolved — `goal.max_steps` editor.** Goal blocks now show an optional "Max LLM turns" number input (default 12, range 1–100) wired to `block.max_steps`.
+- **Resolved — `statusMap` / `runningBlockId` propagated to `for_each.body`.** The recursive `<BlockList>` in `BlockBody`'s `for_each` case receives both props, so inner blocks show running/done state during a run.
+- **Resolved — unknown `kind` renders a placeholder.** `BlockBody`'s switch ends in a `default` branch that renders an "Unsupported block kind" placeholder. `blockMeta()` falls back to a generic record (label "Unknown", color "zinc") so `meta.color` can never throw on a future schema kind. Regression: `web/src/__tests__/blocks.test.ts`.
 - ⚠️ **Drift — `for_each.items` is taken literally; the UI does not hint that `substituteVars` is _not_ applied.** A user typing `$prefix$suffix` will see no substitution and no error. Consider an inline help line: "Use `$varname` to reference an extracted list, or paste a JSON array."
-- ❓ **Question — should drag-drop cross `for_each` boundaries?** Supporting it requires lifting drag state to a context (or to `TaskEditor`) and indexing drop zones by a global path. Likely worth doing as part of the post-refactor `useBlockListState` hook.
 - ❓ **Question — should there be an "insert above" affordance?** Today only "add below" exists per-card; "add at top of list" is the global `AddBlockMenu`. Inserting between two existing blocks requires drag-drop after creation.
 
 ## 7. Decomposition target (post-refactor)
@@ -131,10 +130,8 @@ There are no tests for this component yet.
 | §4 `extract.var_name` sanitiser strips non-alnum-underscore        | —         | `extract: var_name input strips illegal chars`                                       | TODO(test) |
 | §4 `questionnaire.unanswered_var` sanitiser                        | —         | `questionnaire: unanswered_var input strips illegal chars`                           | TODO(test) |
 | §5 native HTML5 DnD only (no library import)                       | —         | `imports: no react-dnd / hello-pangea/dnd`                                           | TODO(test) |
-| §5 drag does not cross `for_each` boundary                         | —         | `dnd: dragId in inner list does not move outer block`                                | TODO(test) |
-| §6 ⚠️ `statusMap` not propagated to nested body                    | —         | `nested: inner block never receives running pulse` (pin current behaviour, then fix) | TODO(test) |
-| §6 ⚠️ `goal.max_steps` is not editable                             | —         | `goal editor: no max_steps input` (pin current behaviour)                            | TODO(test) |
-| §6 ⚠️ unknown `kind` renders empty body without crash              | —         | `unknown kind: BlockBody returns null/empty`                                         | TODO(test) |
+| §5 drag crosses `for_each` boundary via `moveBlockInTree`          | `web/src/__tests__/moveBlockInTree.test.ts` | tree-move cases                                                       | done       |
+| §6 unknown `kind` renders placeholder without crash                | `web/src/__tests__/blocks.test.ts` | unknown-kind cases                                                            | done       |
 
 ### Deliberately not tested
 

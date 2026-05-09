@@ -45,7 +45,7 @@ This module is the only seam through which the outside world starts, observes, c
   4. Publishes a terminal `{ kind: "end", status, result?, error? }` event onto the per-run bus topic.
   5. Schedules `endTopic(runId)` 5 seconds later to drop subscribers.
 
-> ⚠️ **Drift — concurrency invariant not enforced here.** `CLAUDE.md` Quirks state only one run executes at a time (shared persistent Chromium context). This route does **not** check for an existing in-flight run; a second `POST /run` succeeds, inserts a second `runs` row, and starts a second `runAgent` IIFE. The runs will then race on the shared context. The single-run invariant is a property of the system, not enforced by code.
+> Single-run invariant enforced: `POST /api/tasks/:id/run` rejects with 409 when any run (any task) is already `running`. The startup `running`-row sweep in `db.ts` keeps stale rows from blocking real starts.
 
 #### `POST /api/runs/:id/cancel`
 
@@ -90,7 +90,7 @@ Bulk-clear all runs for a task.
 
 - **Content-Type:** `text/event-stream`. Headers: `Cache-Control: no-cache, no-transform`, `Connection: keep-alive`, `X-Accel-Buffering: no` (nginx hint).
 - **Frame format:** `data: <JSON>\n\n` per event. No `event:` field; no `id:` field; no retry hint.
-- **Replay phase:** for every persisted row in `steps WHERE run_id = ?` ordered by `idx ASC`, sends `{ replay: true, step: Step }`.
+- **Replay phase:** subscribes to the bus topic BEFORE the DB replay read (buffering live events). Sends `{ replay: true, step: Step }` for every persisted row in `steps WHERE run_id = ?` ordered by `idx ASC`. After replay, a tail-read of `steps WHERE idx > lastReplayedIdx` catches anything persisted during the race window; the buffer is then drained for live-only kinds (`paused`/`resumed`) and discarded for persistable kinds (already covered by tail).
 - **Terminal-state short-circuit:** if the run row exists and is not `running`, sends one `{ kind: "end", status, result, error }` and closes the response. No subscribe.
 - **Synthetic pause replay:** if `isPaused(runId)`, sends `{ kind: "paused", reason, auto }` after replay, before subscribing.
 - **Live phase:** subscribes to the bus topic for `runId`. Each published event is forwarded verbatim as a JSON frame. The set of live `kind` values is governed by `event-bus.md` §2 (`block_start | block_end | thought | tool_call | tool_result | page_state | stats | var_set | remember | paused | resumed | error | final | end`).
@@ -104,7 +104,7 @@ Bulk-clear all runs for a task.
 - **Response 404 (empty body):** when the file does not exist or the wildcard does not end in `.png`.
 - **Path resolution:** literal string concat `` `screenshots/${req.params["*"]}` `` relative to the server's CWD. No path normalization, no sandbox check beyond the `.png` suffix.
 
-> ⚠️ **Drift — path traversal & cross-platform concerns.** The wildcard is concatenated without normalization. A request like `/screenshots/../foo.png` reaches `existsSync("screenshots/../foo.png")` and, if the file exists and ends in `.png`, is served. The `127.0.0.1` bind plus the `.png` filter make this low-impact, but it is a path-traversal primitive nonetheless. On Linux/macOS the path is case-sensitive (e.g. `Screenshots/abc.png` will 404 if the directory is lowercase); on Windows it isn't. Captured paths in `steps.screenshot_path` are produced by `browser.ts` so case matches in practice — but any consumer constructing screenshot URLs by hand must respect the on-disk casing.
+> Path traversal closed: `/screenshots/*` resolves through `safeResolveScreenshot` (`server/src/paths.ts`), which resolves against the screenshots base, asserts the resolved path stays inside (separator-boundary guard against sibling-directory bypass), and rejects non-`.png` requests. Cross-platform case sensitivity remains as documented; consumers constructing URLs by hand must respect the on-disk casing.
 
 ### Errors (summary)
 
@@ -173,7 +173,7 @@ Bulk-clear all runs for a task.
 
 ## 6. Drift / open questions
 
-- **⚠️ Drift — single-run invariant unenforced.** Two concurrent `POST /run` calls produce two concurrent `runAgent` invocations against the shared persistent Chromium context. Either reject the second call (`409 { error: "another run is active" }`) or document this is an upstream-UI invariant. The current code does neither.
+- **Resolved — single-run invariant enforced.** `POST /api/tasks/:id/run` rejects with 409 when any run is already `running`. The startup `running`-row sweep in `db.ts` keeps stale rows from blocking real starts. Regression: `routes/__tests__/runs.test.ts`.
 - **Resolved — CORS allowlist.** Previously `origin: true`. Now restricted via `server/src/cors.ts` to localhost dev origins. Regression: `server/src/__tests__/cors.test.ts`.
 - **Resolved — `/screenshots/*` path traversal.** Now goes through `safeResolveScreenshot` (`server/src/paths.ts`). Regression: `server/src/__tests__/paths.test.ts`.
 - **Resolved — fire-and-forget IIFE top-level catch.** The IIFE now wraps `runAgent` in `try/catch`, converts any throw into a synthetic `{ status: "error", error }` via `errorMessageFromThrow` (`server/src/errors.ts`), traces a `run.unhandled_throw` event, and routes the synthetic outcome through the same finalisation path. An outer `.catch()` on the IIFE itself catches throws inside finalisation. Regression: `server/src/__tests__/errors.test.ts`.

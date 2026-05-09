@@ -24,11 +24,11 @@ The agent executor produces a stream of events (thoughts, tool calls, tool resul
 The bus is **schema-agnostic at runtime**: it carries whatever the publisher hands it. The compile-time type union is:
 
 - `AgentEvent` (re-exported from `agent.ts`): `block_start`, `block_end`, `thought`, `tool_call`, `tool_result`, `page_state`, `stats`, `var_set`, `remember`, `paused`, `resumed`, `error`, `final`.
-- Plus an inline `EndEvent`: `{ kind: "end"; status: string; result?: string; error?: string }` — emitted by the route handler once the run row is finalized, signalling SSE close.
+- Plus `EndEvent` (sourced from `domain/run.ts`): `{ kind: "end"; status: string; result?: string; error?: string }` — emitted by the route handler once the run row is finalized, signalling SSE close.
 
 The set of valid `kind` values that flow through the bus is therefore: `block_start | block_end | thought | tool_call | tool_result | page_state | stats | var_set | remember | paused | resumed | error | final | end`.
 
-> **Drift / refactor target:** the `EndEvent` shape lives inline in both `bus.ts` and `routes/runs.ts`. Post-refactor, the full `SseEvent = AgentEvent | EndEvent` union should be defined once in `domain/run.ts` and imported by both producer and consumer. The bus itself stays generic over the event type.
+> Resolved: `EndEvent`, `STEP_KINDS` / `StepKind`, and `LIVE_ONLY_KINDS` are hoisted to `domain/run.ts`. `bus.ts`, `routes/runs.ts` (end-event construction), and `agent.ts` (persist signature) consume them. The bus itself stays generic over the event type.
 
 ### Errors
 
@@ -71,7 +71,7 @@ The set of valid `kind` values that flow through the bus is therefore: `block_st
 
 ## 6. Drift / open questions
 
-- **⚠️ Drift — replay/subscribe ordering window.** Between the SQLite `SELECT * FROM steps` in the SSE handler and the `subscribe()` call a few lines later, the agent could publish a new event that is neither in the replay (not yet persisted) nor delivered live (not yet subscribed). In single-process Node this window is bounded by the synchronous code between the two calls — but the SQLite query is synchronous and the agent's `emit` runs on the same event loop, so an event emitted during a microtask checkpoint inside the route handler is theoretically droppable. No test enforces ordering. Either: (a) document this as best-effort, (b) buffer events in the bus per-run with a high-water mark and let subscribers replay from a cursor, or (c) write to SQLite _before_ publishing and have the SSE handler dedupe by `step.idx`.
-- **⚠️ Drift — empty-set leak.** `subscribe`'s returned disposer does `subs.get(runId)?.delete(fn)` but never deletes the now-empty `Set` from the map. Topics whose subscribers all disconnect before `endTopic` is called retain an empty `Set` indefinitely. Negligible memory in practice (one empty Set per ever-streamed run since process start) but worth flagging.
-- **⚠️ Drift — `EndEvent` type duplication.** The inline `{ kind: "end"; status; result?; error? }` shape is declared in both `bus.ts` and constructed in `routes/runs.ts`. Post-refactor, hoist to `domain/run.ts` as part of the `SseEvent` union.
+- **Resolved — replay/subscribe race fixed at the route.** `routes/runs.ts /stream` subscribes BEFORE the DB replay read and buffers live events. After replay, a tail-read of `steps WHERE idx > lastReplayedIdx` catches anything persisted during the race window; the buffer is then drained for live-only kinds (`paused`/`resumed`) and discarded for persistable kinds (already covered by tail). Persist-runs-before-emit ordering inside `runAgent` keeps the invariant that any persistable bus event is already in the DB by the time a subscriber sees it.
+- **Resolved — empty-set leak.** The unsubscribe closure now `subs.delete(runId)` once `set.size === 0`, so a long-lived process doesn't accumulate one entry per run. Regression: `__tests__/bus.test.ts` (with `topicCount()` test hook).
+- **Resolved — `EndEvent` type duplication.** Hoisted to `domain/run.ts`; `bus.ts` and `routes/runs.ts` import it.
 - **❓ Question — should `endTopic` be the bus's responsibility on terminal events?** Currently the _route_ schedules `endTopic` via `setTimeout`. If the bus knew which event kinds were terminal (`end`), it could self-clean. Trade-off: bus would need to know event semantics, breaking its current schema-agnostic posture. Probably keep as-is.

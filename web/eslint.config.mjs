@@ -37,6 +37,13 @@ export default tseslint.config(
       react: { version: "detect" },
     },
     rules: {
+      // Native dialogs (alert/confirm/prompt) block the page and ignore
+      // styling. Tickle uses the UiPrompts toast/confirm dialog instead;
+      // see web/src/components/UiPrompts.tsx. The destructuring
+      // `const { confirm } = useUiPrompts()` is a method call on an
+      // object — ESLint's `no-alert` only flags references to the global
+      // `window.confirm`, so it does not false-positive here.
+      "no-alert": "error",
       "@typescript-eslint/no-explicit-any": "error",
       "@typescript-eslint/explicit-module-boundary-types": "off",
       "@typescript-eslint/no-unused-vars": [

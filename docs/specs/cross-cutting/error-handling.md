@@ -27,7 +27,7 @@ The IIFE now wraps `runAgent` in `try/catch`, converts a throw into a synthetic 
 
 ### LLM retry classifier is too broad
 
-`chatWithRetry` (currently in `agent.ts:31-74`, target: `infrastructure/llm/chatWithRetry.ts`) matches `aborted by` in the transient-error regex — overlaps cancellation. Today defended by the `isCancelled()` ordering check, but it's a footgun. See [`server/llm-client.md`](../server/llm-client.md) drift notes.
+`chatWithRetry` (now at `infrastructure/llm/chatWithRetry.ts`) matches `aborted by` in the transient-error regex — overlaps cancellation. Today defended by the `isCancelled()` ordering check, but it's a footgun. See [`server/llm-client.md`](../server/llm-client.md) drift notes.
 
 **Target:** an explicit `TransientError` class thrown by `chatOnce` for known transient kinds; classifier checks `instanceof`, not stringly.
 
@@ -37,11 +37,9 @@ The IIFE now wraps `runAgent` in `try/catch`, converts a throw into a synthetic 
 
 **Target:** every safe boundary throws a `RunCancelledError` once `isCancelled()` is true. The outer `runAgent` catches `RunCancelledError` specifically and finalises as `cancelled`. Anything else → `error`.
 
-### Frontend uses `alert()` / `confirm()` for action errors
+### Frontend `alert()` / `confirm()` (resolved)
 
-Throughout `App.tsx`, `RunView.tsx`, `SettingsPage.tsx` etc. — see [`web/app-shell.md`](../web/app-shell.md) and [`web/run-view.md`](../web/run-view.md). Native dialogs are inconsistent with the rest of the UI and accessibility-hostile.
-
-**Target:** a single `<Toast>` / `<ErrorBanner>` component, plus a `useApi()` hook that funnels rejections to it. Confirms become an in-app modal.
+`<UiPromptsProvider>` exposes `useUiPrompts()` with `toast.error/info/success` (auto-dismissing toasts) and `confirm({ destructive })` (styled modal, Promise-based, ESC = cancel, Enter / autofocus = confirm). All 16 alert / confirm call sites in `App.tsx`, `RunView.tsx`, `TaskList.tsx`, and `CompileFromText.tsx` migrated. Provider mounted in `main.tsx` above `<App>`.
 
 ### Lazy migration produces volatile UUIDs under concurrent GETs
 
@@ -49,11 +47,9 @@ Throughout `App.tsx`, `RunView.tsx`, `SettingsPage.tsx` etc. — see [`web/app-s
 
 **Target:** wrap migration in `BEGIN IMMEDIATE` so only one writer wins, others read the result.
 
-### `addLesson` non-transactional
+### `addLesson` transactional (resolved)
 
-`lessons` and `lessons_fts` are written separately. A crash between them desyncs FTS. See [`server/persistence.md`](../server/persistence.md).
-
-**Target:** wrap in a transaction. Same fix pattern as `ensureSteps`.
+The `lessons` + `lessons_fts` writes now run inside `BEGIN/COMMIT` with `ROLLBACK` on throw. Regression: `server/src/__tests__/db.lessons.test.ts`.
 
 ## Error class hierarchy (target)
 

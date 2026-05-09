@@ -53,7 +53,8 @@ This module owns: (a) the canonical type union, (b) construction with sensible d
 - Pattern: `\$([a-zA-Z_][a-zA-Z0-9_]*)` — leading letter or underscore, then alnum/underscore. `$1foo`, `$.foo`, `$-foo` do not match.
 - `vars.has(name) === false` → the literal `$name` substring is preserved (NOT replaced with empty string, NOT thrown).
 - `vars.get(name)` is `string` → inserted as-is.
-- Any other type (number, boolean, object, array, null, **`undefined`**) → `JSON.stringify(value)` is inserted. `JSON.stringify(undefined)` returns the JS `undefined` value, which the regex callback returns as-is, producing the literal string `"undefined"` at the call site. ⚠️ See §6.
+- Any other type (number, boolean, object, array, null) → `JSON.stringify(value)` is inserted.
+- An explicitly-undefined value (`vars.set("x", undefined)`) substitutes to the empty string. (Key absent → `$name` is preserved as a literal.)
 - Multiple `$var` occurrences in one string are all substituted in a single `replace` pass.
 - `$var` matches are case-sensitive; `vars` lookup is case-sensitive.
 
@@ -101,7 +102,7 @@ There are no tests for this module yet.
 | §3 every `BlockKind` value is constructable via `newBlock`         | —         | `newBlock: handles every BlockKind exhaustively`                    | TODO(test) |
 | §3 `walkBlocks` is pre-order and recurses into `for_each.body`     | —         | `walkBlocks: parent visited before nested body`                     | TODO(test) |
 | §3 `countBlocks` counts parent + nested                            | —         | `countBlocks: matches walkBlocks visit count`                       | TODO(test) |
-| §6 ⚠️ `substituteVars(undefined)` produces literal `"undefined"`   | —         | `substituteVars: undefined value coerces to "undefined"`            | TODO(test) |
+| §2 `substituteVars(undefined)` substitutes to ""                   | `__tests__/blocks.test.ts` | undefined-value cases                                  | done       |
 
 ### Deliberately not tested (here)
 
@@ -113,7 +114,7 @@ There are no tests for this module yet.
 - ⚠️ **Drift — CLAUDE.md kind list is incomplete.** `CLAUDE.md` lists "navigate, pause, goal, click, fill, extract, for_each" under "Block-based execution." The actual union also includes **`verify`** and **`questionnaire`**. The handbook should be updated to match the code; this spec is canonical.
 - ⚠️ **Drift — frontend duplication.** `web/src/blocks.ts` redeclares the entire union plus `KIND_META`, `BLOCK_KINDS`, `CLICK_ROLES`, `newBlock`, `summaryOf`. Any change here requires a coordinated change there. `_LAYERS.md` calls for a shared `domain/` module — that is the post-refactor target. Until then, keep the two in lockstep.
 - ⚠️ **Drift — `parseBlocks` non-array branch silently drops the fallback.** When `json` parses to a non-array (e.g. `"null"`, `"42"`, `"{}"`), `parseBlocks` returns `[]` even when `fallbackInstruction` is non-empty. The malformed-JSON branch DOES use the fallback. This asymmetry is probably a bug; the safer behaviour is "any non-array result triggers fallback." A test should pin the current behaviour and a follow-up should align the two paths.
-- ⚠️ **Drift — `substituteVars` and `undefined`.** A variable explicitly set to `undefined` (e.g. `vars.set("x", undefined)`) hits the `JSON.stringify` branch, which returns the JS `undefined` value, which the regex callback returns. The result is the literal four-letter string `"undefined"` in the substituted output. This is almost never what a caller wants. Options: (a) treat `undefined` like "missing" and preserve `$x`, (b) substitute empty string, (c) throw. Pin a decision and document it in §2 as the contract.
+- **Resolved — `substituteVars(undefined)`.** An explicitly-undefined value substitutes to the empty string instead of the literal `"undefined"`. (Key absent still leaves `$name` intact.) Regression: `__tests__/blocks.test.ts`.
 - ⚠️ **Drift — `parseBlocks` does not validate.** It casts the parsed JSON to `Block[]` without checking `kind` values, required fields, or `id` presence. A corrupted `tasks.steps` row would propagate garbage to `executeBlock`'s switch (which has no `default` case → silent fallthrough returning `undefined`). A `parseBlock` validator belongs in `domain/` and should be wired through `parseBlocks`.
 - ❓ **Question — should `BlockKind` be versioned?** Today the persisted schema is implicit. A `schema_version` on the row (or on each block) would make migrations explicit instead of "lazy + hope."
 - ❓ **Question — should `pauseAfter` be ignored on `pause` blocks?** A `pause` block already pauses; `pauseAfter: true` on it produces a second pause after the user resumes. Probably a no-op edge case but worth deciding.

@@ -23,7 +23,7 @@
 | `StatsFooter`             | —        | local component; not exported.                                                                                                        | —         |
 | `Empty`                   | —        | local component; not exported.                                                                                                        | —         |
 | `RecentRuns`              | —        | local component; not exported.                                                                                                        | —         |
-| `runDuration`             | —        | local helper; duplicates SQLite-UTC parsing logic from `RunView`. ⚠️ Drift — should consume `state/parseSqliteUtc.ts` once extracted. | drift     |
+| `runDuration`             | —        | imported from `web/src/state/parseSqliteUtc.ts` (sibling of `parseSqliteUtc` and `formatDuration`).                                   | stable    |
 | `formatTokens`            | —        | local helper; belongs in `ui/formatTokens.ts`.                                                                                        | drift     |
 | `CONTEXT_WINDOW_FALLBACK` | —        | local constant `32_768`. Used only when `/api/health` omits `context_window`.                                                         | —         |
 
@@ -41,10 +41,10 @@
 
 | Source                                  | Surface                                                                              |
 | --------------------------------------- | ------------------------------------------------------------------------------------ |
-| `api.createTask` reject                 | `alert("Could not create task: …")`. No state change.                                |
-| `api.deleteTask` reject                 | `alert("Could not delete: …")`. List not refreshed (stale UI).                       |
-| `api.deleteRun` reject (`RecentRuns`)   | `alert("Could not delete: …")`.                                                      |
-| `api.clearTaskRuns` 409 (active runs)   | Confirmation prompt; on confirm retries with `force=true`. Second failure → `alert`. |
+| `api.createTask` reject                 | `useUiPrompts().toast.error(...)`. No state change.                                  |
+| `api.deleteTask` reject                 | `useUiPrompts().toast.error(...)`. List not refreshed (stale UI).                    |
+| `api.deleteRun` reject (`RecentRuns`)   | `useUiPrompts().toast.error(...)`.                                                   |
+| `api.clearTaskRuns` 409 (active runs)   | `useUiPrompts().confirm({ destructive })` modal; on confirm retries with `force=true`. Second failure → `toast.error`. |
 | `api.listTasks` / `api.listRuns` reject | `console.error`; UI stays at last-known-good state.                                  |
 | `/api/health` reject                    | Silently swallowed (`.catch(() => {})`); model/context defaults retained.            |
 | `api.startRun` reject                   | **Unhandled** — promise rejection escapes. ⚠️ Drift: should `alert` like the others. |
@@ -143,8 +143,8 @@ Post-refactor, `App.tsx` shrinks to a ~30-line `<AppShell />` mount that wires t
 - **⚠️ Drift — no router.** All navigation is `useState`. Cannot share a URL to a specific task or run, cannot refresh into a specific view, cannot back-button between selections. `state/useRoute.ts` (or react-router) is the obvious fix once anyone wants deep links.
 - **⚠️ Drift — `api.startRun` rejection is unhandled** (line 170-173). The other action handlers `try/catch` and `alert`; this one does not. A failed start (e.g. server returns 500) silently leaves `activeRunId` unset with no user feedback.
 - **⚠️ Drift — `RecentRuns` does not refresh when a run finishes.** The list reflects the state at task-switch time. After a run completes via `RunView` and the user navigates back (clears `activeRunId`), the list is stale until they switch tasks twice.
-- **⚠️ Drift — `runDuration` and `parseSqliteUtc` are duplicated.** The same SQLite-UTC parsing exists in `RunView.tsx`. Both should consume a single `state/parseSqliteUtc.ts`.
-- **⚠️ Drift — destructive confirmation uses `window.confirm` and errors use `window.alert`.** Same drift noted in `run-view.md`. Replace with a toast/dialog component during refactor.
+- **Resolved — `runDuration` / `parseSqliteUtc` extracted.** Both consume `web/src/state/parseSqliteUtc.ts`. Regression: `web/src/__tests__/parseSqliteUtc.test.ts`.
+- **Resolved — `alert` / `confirm` migrated to UiPrompts.** `<UiPromptsProvider>` exposes `useUiPrompts()` with `toast.error/info/success` and `confirm({ destructive })`. All call sites in `App.tsx`, `RunView.tsx`, `TaskList.tsx`, and `CompileFromText.tsx` migrated.
 - **⚠️ Drift — `formatTokens` k-formatting overflows at 1M.** `999_999` formats as `"1000.0k"` instead of rolling into `"1.0M"`. Fix when extracted.
 - **⚠️ Drift — block status flows up-then-down through `App`.** This is the textbook "lift state too high, then drill it back down" anti-pattern. The shared store (`useRunStream` per `run-view.md` §5) eliminates the round trip; `App` becomes a layout component with no run knowledge.
 - **❓ Open question — should the Settings drawer survive a route change once routing exists?** Today it's pure local state; with a router, an `?settings=open` query param would let users link to it.

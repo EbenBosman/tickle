@@ -31,7 +31,7 @@ The shape is constrained by three things: (a) the OpenAI tool-call wire format e
 | `act`        | `id: number`, `action: enum` | `value?: string`                                            | `{ ok: true, text: "<verb-phrase> [id]" }`                                                                 | **yes** (in agent.ts)                   |
 | `read_text`  | —                            | `selector?: string` (CSS)                                   | `{ ok: true, text: <≤6000 chars or "(empty)"> }`                                                           | no                                      |
 | `scroll`     | `pixels: number`             | —                                                           | `{ ok: true, text: "Scrolled Npx" }`                                                                       | no                                      |
-| `wait_for`   | `selector: string`           | `timeout_ms?: number=8000`                                  | `{ ok: true, text: "Element <sel> present" }`                                                              | no                                      |
+| `wait_for`   | `selector: string`           | `state?: "visible"\|"attached"\|"hidden"\|"detached"=visible`, `timeout_ms?: number=8000`                                  | `{ ok: true, text: "Element <sel> present" }`                                                              | no                                      |
 | `press_key`  | `key: string`                | —                                                           | `{ ok: true, text: "Pressed <key>" }`                                                                      | no                                      |
 | `screenshot` | —                            | —                                                           | `{ ok: true, image_base64, text: "(screenshot attached)" }`                                                | no (it returns one)                     |
 | `fetch_url`  | `url: string` (http/https)   | —                                                           | `{ ok: true, text: "Fetched <final-url> (<n> chars, returning first <m>):\n\n<body>" }` (≤6000 chars body) | no (uses temp tab; main page untouched) |
@@ -50,7 +50,7 @@ The shape is constrained by three things: (a) the OpenAI tool-call wire format e
 | `check`         | no                | `locator.check({ timeout: 8000 })`                                                                                                                                                                                               |
 | `uncheck`       | no                | `locator.uncheck({ timeout: 8000 })`                                                                                                                                                                                             |
 | `hover`         | no                | `locator.hover({ timeout: 8000 })`                                                                                                                                                                                               |
-| `select_option` | **yes**           | `locator.selectOption(value, { timeout: 8000 })` — Playwright matches by `value` attribute, label, or `<option>` text in that order. The schema description says "option text or value" — actual coverage is broader. ⚠️ See §6. |
+| `select_option` | **yes**           | `locator.selectOption(value, { timeout: 8000 })` — Playwright matches by `value` attribute, label, or `<option>` text in that order. The schema description matches this priority. |
 
 ### Errors (return shape, never thrown)
 
@@ -77,7 +77,7 @@ The shape is constrained by three things: (a) the OpenAI tool-call wire format e
 - **I7 — `screenshot` and `snapshot` are the only tools that attach `image_base64`.** All others return text-only.
 - **I8 — Auto-snapshot is the executor's responsibility, not this module's.** `agent.ts` is responsible for taking a fresh snapshot after every successful `navigate` and `act` call and attaching it to the tool result the model sees. `executeTool` itself does not auto-snapshot. Falsifiable: grep this module for `takeSnapshot` outside the `snapshot` branch — there must be exactly one call site.
 - **I9 — `act` timeouts are 8000ms, fixed.** Not configurable from the tool args. Falsifiable by inspection.
-- **I10 — `wait_for` checks `state: "attached"`, not `"visible"`.** An element in the DOM but invisible satisfies the wait. Falsifiable by Playwright behaviour.
+- **I10 — `wait_for` defaults to `state: "visible"`.** An invisible element does NOT satisfy the wait by default. Optional `state` accepts `visible | attached | hidden | detached`, validated server-side. Falsifiable by Playwright behaviour.
 
 ## 4. How (briefly)
 
@@ -95,7 +95,7 @@ The shape is constrained by three things: (a) the OpenAI tool-call wire format e
 
   Block-level tags (`div, p, br, tr, li, section, article, h1–h6, header, footer, nav`) append a newline after their subtree. Output is post-processed: `[ \t]+\n → \n`, `\n{3,} → \n\n`, `.trim()`, then `.slice(0, 6000)`. Empty output renders as `"(empty)"`.
 
-- **`fetch_url` filter.** Similar walker but **looser**: it strips the eight tag names plus `aria-hidden`, `display:none`, `visibility:hidden`, and `opacity:0`. It does **not** apply the font-size, bounding-box, or colour-camouflage rules. ⚠️ Drift — both filters should share one implementation. See §6.
+- **`fetch_url` filter.** Shares one walker with `read_text` (`__extractVisibleTextFnSource` in `tools.ts`, evaluated as a string + `new Function` so neither call site can drift). Same eight strip rules.
 - **Image attachment shape.** `ToolResult.image_base64` is raw base-64 with no `data:image/...;base64,` prefix; `agent.ts` constructs the data URL when assembling the OpenAI vision message.
 - **No state.** Module-level mutable state is zero. Every call is a function of `(session, name, args)`.
 
@@ -136,8 +136,8 @@ The shape is constrained by three things: (a) the OpenAI tool-call wire format e
 ### Drift
 
 - **Resolved — `finish` removed from `toolDefs`.** The model now only sees `finish_step` (appended by `agent.ts::toolsForAiBlock`). The duplicate `finish` exposed an un-intercepted exit path that ran the loop to step-limit. Regression: `__tests__/tools.test.ts`.
-- **⚠️ `read_text` and `fetch_url` text walkers diverge.** `fetch_url`'s walker omits the font-size, bounding-box, and colour-camouflage checks. A page reachable via `fetch_url` is no less hostile than one reached via `navigate` — the same filter must apply. Refactor target: extract `extractVisibleText(root)` into a shared `infrastructure/browser/extractText.ts` and have both branches call it.
-- **⚠️ `select_option` matching mode is documented as "option text or value" but Playwright actually matches `value` attribute, label, _or_ `<option>` text content, in priority order.** Either narrow Playwright's call (e.g. `selectOption({ label: value })` to force label-only) or update the schema description to match real behaviour. Until then, models will get inconsistent results across multi-language sites where `value` and visible text differ.
+- **Resolved — unified text walker.** `read_text` and `fetch_url` share a single in-page walker (`__extractVisibleTextFnSource` in `tools.ts`), evaluated via a string + `new Function` so neither call site can drift. The 8 strip rules apply to both. Regression: `__tests__/tools.readText.test.ts`.
+- **Resolved — `select_option` description.** Schema description aligned with Playwright's match priority (value → label → text).
 - **⚠️ `read_text` slice-then-trim ordering.** Output is post-processed (`replace`, `replace`, `trim`) then `.slice(0, 6000)`. A page with 6001 chars of meaningful text followed by trailing whitespace would have its tail truncated mid-word silently. Acceptable for an LLM consumer but worth flagging.
 - **⚠️ Layer placement.** Per `_LAYERS.md`, `tools.ts` belongs in `application/` post-refactor — it orchestrates `infrastructure/` (`browser.ts`, `snapshot.ts`) on behalf of the agent. The right split is:
   - `domain/tools.ts` — `toolDefs` (pure data) and the `ToolResult` type. Zero imports from infrastructure.
@@ -147,6 +147,5 @@ The shape is constrained by three things: (a) the OpenAI tool-call wire format e
 
 ### Open questions
 
-- **❓ Should `wait_for` check `state: "visible"` instead of `"attached"`?** The current behaviour resolves on DOM presence, which can mislead a model into acting on an invisible element. Counter: explicit visibility checks are slower and the next `act` will fail loudly anyway.
 - **❓ Should `fetch_url` advertise its 6KB cap in the success text?** It currently says "first M chars" but doesn't tell the model the cap is fixed at 6000 — successive calls on the same long page won't paginate.
 - **❓ Should `act.fill` clear the input first explicitly?** Playwright's `fill()` already replaces, but some React inputs ignore programmatic value-set without a `change` event. No reported issue yet.

@@ -24,15 +24,7 @@ Today the event set is implicit and spread across:
 - `log.ts` trace event names (string-untyped)
 - CLAUDE.md "SSE event stream" section (docs)
 
-These five lists disagree with each other. Specifically:
-
-- `Step["kind"]` lists 5 kinds; agent persists 9 (`block_start`, `block_end`, `var_set`, `remember` missing). [`persistence.md`](../server/persistence.md), [`agent.md`](../server/agent.md).
-- `AgentEvent` includes `resumed` but the agent never publishes it — `routes/runs.ts` does.
-- `page_state` and `stats` are advertised in CLAUDE.md as persisted but they aren't — live-only. [`agent.md`](../server/agent.md).
-- Web client `Step["kind"]` mirror is narrower again. [`api-client.md`](../web/api-client.md).
-- Trace logger's event vocabulary is ~30 names, untyped — far broader than CLAUDE.md describes. [`observability-log.md`](../server/observability-log.md).
-
-**Target:** `domain/run.ts` exports a single `SseEvent` discriminated union. `bus.ts` carries it; `agent.ts` emits it; `db.ts` types `Step["payload"]` against it; `RunView.tsx` switches on it. A single `TraceEventKind` union does the same for `log.ts`. Type drift becomes a compile error.
+Server-side hoisted (resolved). `STEP_KINDS` / `StepKind`, `EndEvent`, and `LIVE_ONLY_KINDS` now live in `domain/run.ts`; `bus.ts`, `routes/runs.ts`, `agent.ts`, and `db.ts` consume them. Web's `Step["kind"]` is widened to the full union (kept in sync; cross-workspace shared `domain/` deferred). `page_state` / `stats` are now persisted. `AgentEvent` still advertises `resumed` deliberately so subscribers see one cohesive wire vocabulary; the comment in `agent.md` §2 calls out which module actually emits it. Remaining: `TraceEventKind` is still string-typed.
 
 ## Event matrix (current behaviour)
 
@@ -41,14 +33,14 @@ For each event, where it lands today. ✅ = lands; ⛔ = does not.
 | Event         | SSE | DB `steps` | Trace log | Notes                                                 |
 | ------------- | --- | ---------- | --------- | ----------------------------------------------------- |
 | `block_start` | ✅  | ✅         | ✅        |                                                       |
-| `block_end`   | ✅  | ✅         | ✅        | 🔴 emitted twice on rescue success                    |
+| `block_end`   | ✅  | ✅         | ✅        | one emission per block (rescue merged via `mergeRescuedOutcome` before emit) |
 | `thought`     | ✅  | ✅         | ⛔        |                                                       |
 | `tool_call`   | ✅  | ✅         | ✅        |                                                       |
 | `tool_result` | ✅  | ✅         | ✅        |                                                       |
-| `var_set`     | ✅  | ✅         | ✅        | `Step["kind"]` type doesn't include this              |
-| `remember`    | ✅  | ✅         | ✅        | `Step["kind"]` type doesn't include this              |
-| `page_state`  | ✅  | ⛔         | ⛔        | 🟠 reconnects miss it (CLAUDE.md says it's persisted) |
-| `stats`       | ✅  | ⛔         | ⛔        | 🟠 reconnects miss it                                 |
+| `var_set`     | ✅  | ✅         | ✅        |                                                       |
+| `remember`    | ✅  | ✅         | ✅        |                                                       |
+| `page_state`  | ✅  | ✅         | ⛔        | now persisted via wrapper around `emit` in `runAgent` |
+| `stats`       | ✅  | ✅         | ⛔        | now persisted                                         |
 | `paused`      | ✅  | ✅         | ✅        |                                                       |
 | `resumed`     | ✅  | ✅         | ✅        | Emitted by routes, not agent                          |
 | `error`       | ✅  | ✅         | ✅        |                                                       |
@@ -72,7 +64,7 @@ For each event, where it lands today. ✅ = lands; ⛔ = does not.
 ### SSE bus
 
 - Lifetime: until `endTopic` (called 5s after `end` per `routes/runs.ts`). Subscribers don't get a buffered backlog — they get future events plus replay from DB.
-- 🟠 Replay-then-subscribe race in `bus.ts`. Window between SQLite read and `subscribe()` can drop events. [`event-bus.md`](../server/event-bus.md).
+- Replay-then-subscribe race fixed at the route. `routes/runs.ts /stream` subscribes BEFORE the DB replay read and buffers live events. After replay, a tail-read of `steps WHERE idx > lastReplayedIdx` catches anything persisted during the race window; the buffer is then drained for live-only kinds (`paused`/`resumed`) and discarded for persistable kinds (already covered by tail). Persist-runs-before-emit ordering inside `runAgent` keeps the invariant that any persistable bus event is already in the DB by the time a subscriber sees it.
 
 ## Correlation across surfaces
 

@@ -34,6 +34,8 @@ Env vars (`server/.env.example`):
 - `LLM_MODEL` (default `qwen3.6-27b-uncensored-hauhaucs-balanced`). Whatever name the LLM server reports for the loaded model. The default is an abliterated qwen3.6-27b — uncensored variants follow page-content instructions (forms, refusals, banners) without an extra policy layer on top of the locally running model.
 - `LLM_API_KEY` (default `not-needed`) — most local servers ignore this but the OpenAI client requires _something_.
 - `HEADED` (default `true`), `MAX_AGENT_STEPS`, `KEEP_RECENT_IMAGES` round out the agent config.
+- `TICKLE_PROFILE_DIR`, `TICKLE_SHOTS_DIR`, `TICKLE_DB_PATH` — override on-disk locations of the persistent Chromium profile, screenshot files, and SQLite database. Absolute pass through; relative paths resolve against `server/`.
+- `LOG_REDACT` — comma-separated extra keys to add to the trace-log redaction denylist (default already covers `apikey`, `authorization`, `cookie`, `password`, `token`).
 
 Thinking mode is already wired: `chat_template_kwargs.enable_thinking: false` is passed on stateless atomic steps (extract, verify, per-question answer in questionnaire) where chain-of-thought is wasted latency. `runAiSubGoal` (multi-turn goal/click/fill blocks) leaves thinking on because planning benefits from it. The flag is recognised by Qwen3.x running under LM Studio or Ollama's /v1 endpoint; ignored by other backends.
 
@@ -96,7 +98,7 @@ When a local-model run fails or the user requests rescue, the executor can re-at
 
 - **Login auto-pause** (`server/src/loginDetect.ts`) — known SSO hosts (Google, Microsoft, Okta, Auth0, Apple, Atlassian, Yahoo, GitHub `/login`, LinkedIn, X / twitter.com, Facebook), visible password fields, webauthn/one-time-code inputs, "Use your passkey" text. One-shot per run.
 - **Stall auto-pause** — three identical-shape tool calls in a row. One-shot per run.
-- **LLM retry with backoff** — `chatWithRetry` retries transient errors (`fetch failed`, `ECONN*`, `ETIMEDOUT`, `socket hang up`) at 1.5s and 4s; cancellation is honoured between attempts.
+- **LLM retry with backoff** — `chatWithRetry` (in `server/src/infrastructure/llm/`) retries transient errors (`fetch failed`, `ECONN*`, `ETIMEDOUT`, `socket hang up`) at 1.5s and 4s; cancellation is honoured between attempts.
 - **Pause / Resume / Cancel** are first-class: `server/src/pause.ts` and `cancel.ts`. Cancel calls `client.abort()` to interrupt the in-flight LLM request (LM Studio / Ollama / whatever is wired via `LLM_BASE_URL`) and resumes any pause-waiter so the loop can observe the cancellation.
 
 ### Storage
@@ -113,7 +115,7 @@ SQLite stores `datetime('now')` as UTC space-separated; the frontend's `parseSql
 
 ### SSE event stream
 
-`GET /api/runs/:id/stream` replays existing steps then subscribes via `server/src/bus.ts`. Event kinds: `thought`, `tool_call`, `tool_result`, `block_start`, `block_end`, `var_set`, `page_state`, `stats`, `paused`, `resumed`, `error`, `final`, `end`. Each carries a `block_id` where applicable so the UI can group/highlight.
+`GET /api/runs/:id/stream` replays existing steps then subscribes via `server/src/bus.ts`. Event kinds: `thought`, `tool_call`, `tool_result`, `block_start`, `block_end`, `var_set`, `remember`, `page_state`, `stats`, `paused`, `resumed`, `error`, `final`, `end`. Each carries a `block_id` where applicable. The `domain/run.ts::StepKind` and `LIVE_ONLY_KINDS` unions are the single source of truth — `bus.ts`, `db.ts`, and `agent.ts` all consume them.
 
 ### Trace log
 
@@ -125,37 +127,55 @@ SQLite stores `datetime('now')` as UTC space-separated; the frontend's `parseSql
 server/
   src/
     index.ts            Fastify bootstrap, CORS, /api/health
-    db.ts               SQLite schema + Task/Run/Step types, lazy `steps` column add
+    db.ts               SQLite open + zombie-running sweep + typed row helpers (schema lives in migrations/)
     blocks.ts           Block types, factory, $var substitution, walkers
     agent.ts            runAgent → executeBlocks → executeBlock → runAiSubGoal / runStatelessStep / runQuestionnaireBlock
+    blockOutcome.ts     mergeRescuedOutcome: single-emit block_end semantics across local + Claude rescue
     snapshot.ts         takeSnapshot: DOM walk, role inference, accessible name, viewport-only default
     formScan.ts         Deterministic form-input walk (form-scoped, exclusion of nav/header/<a>); checkQuestionAnswered
+    visibility.ts       isVisuallyHidden — shared helper, with mirrored copies inside formScan/loginDetect page.evaluate blocks
     tools.ts            toolDefs + executeTool (snapshot, act, navigate, read_text, scroll, wait_for, press_key, screenshot, fetch_url). The agent loop appends finish_step at runtime.
     browser.ts          Persistent Chromium context, __name polyfill, screenshot helper
     llm.ts              OpenAI-compatible client + chatOnce wrapper (handles tool-call format, image attachments, thinking-mode toggle, AbortSignal cancellation)
     cancel.ts           per-run cancellation registry
     pause.ts            per-run pause registry with awaitable resume
     loginDetect.ts      auto-pause heuristics
-    log.ts              JSONL trace + rotation
+    log.ts              JSONL trace + rotation + redaction (apikey/authorization/cookie/password/token; LOG_REDACT extends)
     bus.ts              SSE pub-sub per run
+    cors.ts             Fastify CORS allowlist (localhost dev origins only)
+    errors.ts           errorMessageFromThrow — normalises Error / string / unknown / circular shapes
+    paths.ts            safeResolveScreenshot path-traversal guard
+    coerce.ts           query-param helpers (positive-finite numbers, etc.)
+    domain/             Pure types: run.ts (StepKind / EndEvent / LIVE_ONLY_KINDS), models.ts (rescue model allowlist + isValidModel guard)
+    infrastructure/
+      llm/
+        chatWithRetry.ts   chatWithRetry + RETRY_BACKOFFS_MS + isTransientLLMError + ChatRequest type
+    migrations/         Versioned, idempotent schema migrations recorded in schema_versions
+    paths/
+      storage.ts        PROFILE_DIR / SHOTS_DIR — module-anchored via import.meta.url; TICKLE_PROFILE_DIR / TICKLE_SHOTS_DIR override (TICKLE_DB_PATH lives next to the DB open in db.ts)
     routes/
       tasks.ts          CRUD + lazy steps migration
-      runs.ts           start, cancel, pause, resume, delete, clear, /stream (SSE), /screenshots/*
-      compile.ts        POST /api/blocks/compile — prose to typed Block[] via the LLM
-      settings.ts       GET/PUT /api/settings; GET/DELETE /api/lessons
+      runs.ts           start (with single-run 409), cancel, pause, resume, delete, clear, /stream (SSE), /screenshots/*
+      compile.ts        POST /api/blocks/compile — prose to typed Block[] via the LLM (8000-char input cap → 413)
+      settings.ts       GET/PUT /api/settings; GET/DELETE /api/lessons (limit / offset clamped)
       export.ts         GET /api/export — JSONL training-data dump from messages_export rows
 
 web/
   src/
     main.tsx, App.tsx, index.css
-    api.ts              fetch helpers + Task/Run/Step types
-    blocks.ts           Block types matching server, kind metadata (icon, color)
+    api.ts              fetch helpers + Task/Run/Step types (Step.kind tracks server StepKind)
+    blocks.ts           Block types matching server, kind metadata (icon, color), v4-shaped UUID fallback
+    state/
+      useRunStream.ts   EventSource lifecycle + entry/page-state/memory/paused/started/finished state
+      parseSqliteUtc.ts parseSqliteUtc + formatDuration + runDuration
+      compileFlags.ts   isExternalUrl + looksLikeCredential — drives the compile-preview review banner
     components/
       TaskList.tsx      left column
       TaskEditor.tsx    middle column — name + BlockList
-      BlockList.tsx     drag-drop reorderable typed-block editor (recurses for for_each)
-      RunView.tsx       right column — SSE consumer, page state, timer, pause banner, entry stream
+      BlockList.tsx     drag-drop reorderable typed-block editor (recurses for for_each); cross-for_each drag via DragCtx + moveBlockInTree
+      RunView.tsx       right column — consumes useRunStream; renders entry stream, page state, timer, pause banner
       StatusPill.tsx    status colour mapping (running/paused/done/error/cancelled)
+      UiPrompts.tsx     toast + confirm provider; replaces window.alert / window.confirm
 ```
 
 ## Conventions

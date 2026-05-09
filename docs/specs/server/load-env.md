@@ -42,22 +42,22 @@ The loader does not validate or know about specific keys — it copies every `KE
 | _(none)_ | Missing `.env` is not an error — defaults apply silently.       | —              |
 | _(none)_ | Malformed lines (no `=`, comments, blank) are skipped silently. | —              |
 
-The loader never throws, never logs. Filesystem read errors other than ENOENT (e.g. permission-denied on a present-but-unreadable `.env`) would surface as an uncaught exception from `readFileSync` and crash the process before Fastify starts. ⚠️ See §6.
+The loader never throws. ENOENT silently skips to the next candidate path. Other IO errors (EACCES, EISDIR, etc.) are logged via `console.error` and skipped — startup proceeds with downstream defaults.
 
 ## 3. Invariants
 
 - **I1 — Load-order:** `loadEnv` finishes evaluating before any other module in the dependency graph reads `process.env` at top level. Enforced by `server/src/index.ts` importing `./loadEnv.ts` as its first statement; any module that ends up in the graph before `loadEnv` (e.g. transitively imported by a future config file evaluated earlier) breaks this invariant.
 - **I2 — Existing values win:** if `process.env[key]` is already defined (anything other than `undefined`) when `loadEnv` runs, the value from `.env` is **discarded**. This is the inverse of `dotenv`'s default and intentional — it lets callers override via shell (`LLM_MODEL=foo npm run dev:server`) without editing `.env`. An empty string in `process.env` is _defined_ and therefore preserved, not overwritten.
 - **I3 — Missing file is graceful:** if `.env` does not exist (`existsSync(".env") === false`), the loader is a no-op. Defaults from downstream `??` fallbacks apply.
-- **I4 — Resolution is cwd-relative:** the path passed to `existsSync`/`readFileSync` is the literal string `".env"`, resolved against `process.cwd()`. The server is expected to be launched from `server/`; running it from the repo root will silently miss `server/.env`. ⚠️ See §6.
+- **I4 — Resolution is module-anchored:** the loader resolves candidate paths via `import.meta.url`, walking `server/.env` then the repo-root `.env`. CWD-independent — the server can be launched from anywhere. The first candidate that exists wins.
 - **I5 — Single-pass, no expansion:** the loader does not perform variable expansion (`${VAR}`), multi-line values, comment-on-same-line stripping, or escape sequences. Only outer matching single or double quotes around the entire trimmed value are stripped.
 - **I6 — Idempotent re-import:** ES module caching means the side effect runs exactly once per process. Re-importing the module does not re-read `.env`.
 
 ## 4. How (briefly)
 
-- **Algorithm:** if `.env` exists in the cwd, read it as UTF-8, split on `\n`, and for each line: trim; skip blank or `#`-prefixed; split on the first `=`; trim key and value; strip outer matching quotes (`"…"` or `'…'`); assign to `process.env[key]` **only if currently `undefined`**.
+- **Algorithm:** walks candidate paths anchored at `import.meta.url` (`server/.env` then repo-root `.env`). For the first existing file, read it as UTF-8, split on `\n`, and for each line: trim; skip blank or `#`-prefixed; split on the first `=`; trim key and value; strip outer matching quotes (`"…"` or `'…'`); assign to `process.env[key]` **only if currently `undefined`**.
 - **No dependency:** does not use `dotenv` or any other package — pure `node:fs` (`existsSync`, `readFileSync`). This avoids dragging a transitive dependency tree into the bootstrap path and keeps the load-order guarantee simple to reason about.
-- **Path handling:** the literal string `".env"` is portable across Windows, macOS, and Linux because Node's `fs` accepts forward-slash and bare relative paths everywhere. No `path.join` or `__dirname` walk; no upward search for a parent `.env`.
+- **Path handling:** module-anchored via `import.meta.url`, so `cd` location and Windows / macOS / Linux all behave the same.
 - **No mutable state of its own:** the only side effect is on `process.env`. No exports, no internal cache, no logging.
 
 ## 5. How tested
@@ -67,9 +67,9 @@ The loader never throws, never logs. Filesystem read errors other than ENOENT (e
 | §3 I1 — load-order: `loadEnv` runs before `llm.ts` captures constants                           | —         | —         | TODO(test) |
 | §3 I2 — existing `process.env[key]` is not overwritten by `.env`                                | —         | —         | TODO(test) |
 | §3 I3 — missing `.env` is a graceful no-op (no throw)                                           | —         | —         | TODO(test) |
-| §3 I4 — `.env` is resolved relative to `process.cwd()`, not to the source file                  | —         | —         | TODO(test) |
+| §3 I4 — `.env` is resolved via `import.meta.url`, walking `server/.env` then repo-root `.env`    | `__tests__/loadEnv.test.ts` | candidate-walk cases | done       |
 | §3 I5 — outer matching quotes stripped; comments and blanks skipped; `=` inside value preserved | —         | —         | TODO(test) |
-| §6 — non-ENOENT read error (e.g. EACCES) propagates and crashes startup                         | —         | —         | TODO(test) |
+| §6 — non-ENOENT IO errors logged and skipped (no crash)                                         | `__tests__/loadEnv.test.ts` | EACCES / EISDIR cases | done       |
 
 ### Deliberately not tested
 
@@ -77,7 +77,6 @@ The loader never throws, never logs. Filesystem read errors other than ENOENT (e
 
 ## 6. Drift / open questions
 
-- ⚠️ **Drift — cwd dependency is implicit.** I4 means a developer who runs `node server/src/index.ts` from the repo root will get _no_ `.env` loading and silently fall through to defaults. The bootstrap currently relies on the project's npm scripts (`npm run dev:server`) cd-ing into `server/` first. Either the loader should resolve relative to its own source location (`new URL("../.env", import.meta.url)`) or the docs should make the cwd requirement explicit.
-- ⚠️ **Drift — non-ENOENT read errors crash the process.** `existsSync` followed by `readFileSync` is not atomic; a permission-denied or mid-read deletion would throw an uncaught exception from a top-level statement and the server would never start, with a stack trace pointing at `loadEnv.ts` rather than at a friendly error. Acceptable today, but worth a `try { … } catch { }` if anyone reports it.
+- **Resolved — cwd dependency removed.** Path resolution is anchored at `import.meta.url` and walks `server/.env` then the repo-root `.env`. Regression: `__tests__/loadEnv.test.ts`.
+- **Resolved — non-ENOENT IO errors no longer crash.** ENOENT silently skips to the next candidate; EACCES / EISDIR / other IO errors are logged via `console.error` and skipped. Regression: `__tests__/loadEnv.test.ts`.
 - ❓ **Question — should override semantics be inverted?** I2 is "shell wins, .env loses," matching the project's "set `LLM_MODEL=foo` ad-hoc" workflow. `dotenv`'s default is the opposite. If this module is ever swapped for `dotenv`, the override flag must be set explicitly to preserve I2.
-- ❓ **Question — should we walk up to find `.env`?** A monorepo-style search (`./.env`, `../.env`, …) would let the server be launched from the repo root. Out of scope until someone files it.

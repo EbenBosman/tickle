@@ -27,7 +27,7 @@ A tickle task is a typed program of blocks (see `blocks.md`). This module is the
 | `AgentEvent`    | type     | discriminated union on `kind` — see "SSE event vocabulary" below                                                                                                                                           | stable (consumed by `bus.ts`, `routes/runs.ts`, `web/src/api.ts`)                                                                        |
 | `BlockStatus`   | type     | `"pending" \| "running" \| "done" \| "failed" \| "skipped"`                                                                                                                                                | stable                                                                                                                                   |
 | `RunHandle`     | type     | `{ run: Run }` — declared, not used at runtime today                                                                                                                                                       | evolving — candidate for removal                                                                                                         |
-| `chatWithRetry` | function | `(client, request, isCancelled, setActiveController, onRetry) => Promise<ChatResponse>` — module-internal but exercised by both `runAiSubGoal` and `runStatelessStep`                                      | **misplaced** — must move to `infrastructure/llm/chatWithRetry.ts` per `_LAYERS.md` (see §6). Not exported today.                        |
+| `chatWithRetry` | function | `(client, request, isCancelled, setActiveController, onRetry) => Promise<ChatResponse>` — re-exported from `infrastructure/llm/chatWithRetry.ts`, exercised by both `runAiSubGoal` and `runStatelessStep`                                      | stable — relocation done (was previously inline at this layer; see §6).                        |
 
 All other names in this file (`ExecCtx`, `BlockOutcome`, `AiSubOutcome`, `StatelessOutcome`, `executeBlocks`, `executeBlock`, `runAiSubGoal`, `runStatelessStep`, `runVerifyBlock`, `runQuestionnaireBlock`, `enrichQuestionsWithVision`, `runClaudeRescue`, `generateLesson`, `buildLessonContext`, `buildStatelessUserPrompt`, `pruneOldImages`, `toolsForAiBlock`, `blockSummary`, `emitPageState`, `isTransientLLMError`, the system-prompt constants) are intentionally not exported.
 
@@ -54,7 +54,7 @@ The bus and the `RunView` UI depend on this surface. Every event carries `kind`;
 | `var_set`     | `{ name: string; preview: string }`                                                                                 | `extract` block on success, questionnaire block at end                                                                               |
 | `remember`    | `{ note: string }`                                                                                                  | `remember` tool from stateless steps; questionnaire block at start (synthetic)                                                       |
 | `paused`      | `{ reason?: string; auto?: boolean }`                                                                               | login auto-pause, stall auto-pause, `pause` block, `pauseAfter` flag, `verify` `on_fail: "pause"`                                    |
-| `resumed`     | `{}`                                                                                                                | **Not emitted by this module today.** The `resumed` SSE event is published by `routes/runs.ts` on `POST /resume`. ⚠️ Drift — see §6. |
+| `resumed`     | `{}`                                                                                                                | Not emitted by this module. The `resumed` SSE event is published by `routes/runs.ts` on `POST /resume`. The `AgentEvent` union here advertises it for the union to match the wire format the bus carries. |
 | `error`       | `{ error: string; block_id?: string }`                                                                              | top-level run failure, "task has no steps"                                                                                           |
 | `final`       | `{ answer: string }`                                                                                                | exactly once on `status: "done"` exit                                                                                                |
 
@@ -77,7 +77,7 @@ The bus and the `RunView` UI depend on this surface. Every event carries `kind`;
   | `final`           | `{ answer }`                                                                                                                                                                                                | yes                          |
   | `messages_export` | `{ block_id, block_kind, instruction, rescue_model, local_status, local_error, local_step_count, rescue_status, rescue_step_count, local_messages, rescue_messages }` — written _only_ by `runClaudeRescue` | no (training-data sink only) |
 
-  ⚠️ The `Step.kind` literal union in `db.ts` lists only five kinds (`thought | tool_call | tool_result | error | final`). This module persists ten. See `persistence.md` §6 and §6 below.
+  Previously the `Step.kind` literal union in `db.ts` listed only five kinds (`thought | tool_call | tool_result | error | final`) while this module persisted ten. Resolved: `STEP_KINDS` / `StepKind` now live in `domain/run.ts`; `db.ts` consumes them. See `persistence.md` §6.
 
 - **`lessons` rows** via `addLesson(runId, blockId, lesson, situation)` from `generateLesson`. Written asynchronously after a Claude rescue completes; failures are traced and swallowed (`rescue.lesson_error` / `rescue.lesson_failed`).
 
@@ -146,7 +146,7 @@ This section is the refactor plan. Every concern in `agent.ts` is listed with: c
 ### 4.2 `executeBlocks` walker — `application/executeBlocks.ts`
 
 - **Current:** lines `288–396`.
-- **Moves:** the for-loop, the `block_start`/`block_end` SSE+persist boilerplate (extract a `withBlockSpan(ctx, block, fn)` helper to reduce duplication), the `pauseAfter` handling, and the post-failure rescue dispatch (the rescue dispatch is the most subtle part — it emits a _second_ `block_end` with `status: "done"` if rescue succeeds — see I7 + §6).
+- **Moves:** the for-loop, the `block_start`/`block_end` SSE+persist boilerplate (extract a `withBlockSpan(ctx, block, fn)` helper to reduce duplication), the `pauseAfter` handling, and the post-failure rescue dispatch. Rescue runs before `block_end` is emitted, with the merged outcome computed by `mergeRescuedOutcome` (`server/src/blockOutcome.ts`); one emission per block.
 - **`blockSummary`** can move to `domain/blocks.ts` (it has no I/O); it is a pure presentation helper over `Block + vars`.
 
 ### 4.3 `executeBlock` dispatcher — `application/executeBlock.ts`
@@ -190,12 +190,11 @@ Note the scan→enrich→loop→verify pipeline is one cohesive unit; do not ove
 - **Moves:** the rescue dispatcher (constructs a rescue `ExecCtx` cloned with `client: ctx.claudeClient`, calls `runAiSubGoal` with a "previous attempt failed" `systemSuffix`), the `messages_export` row write (must move behind a `RunStore.appendMessagesExport(runId, payload)` interface — see `persistence.md` §6), the fire-and-forget `generateLesson` (writes to `lessons` table via `addLesson`), the `buildLessonContext` (used by `runAiSubGoal` to inject lessons from past runs into the system prompt — read-only via `searchLessons`).
 - **Cross-cuts:** rescue depends on `runAiSubGoal` (4.5), so rescue lives one level down in the dependency graph.
 
-### 4.9 `chatWithRetry` (LLM retry, misplaced) — `infrastructure/llm/chatWithRetry.ts`
+### 4.9 `chatWithRetry` (LLM retry) — `infrastructure/llm/chatWithRetry.ts`
 
-- **Current:** lines `31–74` plus the `isTransientLLMError` regex (line 33).
-- **Moves wholesale.** Knows `chatOnce`, retry timing, transient classification — knows nothing about blocks or runs. Belongs next to `chatOnce`. The `setActiveController` callback parameter is the only seam back to caller state; it stays in the signature.
-- **The `RETRY_BACKOFFS_MS` constant** moves with it. `STALL_REPEAT_THRESHOLD` stays with `runAiSubGoal` (4.5).
-- **See `llm-client.md` §6 drift** — the classifier regex includes `aborted by`, which is dangerous; tighten on relocation.
+- **Now lives at** `server/src/infrastructure/llm/chatWithRetry.ts` along with `RETRY_BACKOFFS_MS`, `isTransientLLMError`, and the `ChatRequest` type. `agent.ts` imports it; the `setActiveController` callback parameter is the seam back to caller state.
+- `STALL_REPEAT_THRESHOLD` stays with `runAiSubGoal` (4.5).
+- **See `llm-client.md` §6** — the classifier regex includes `aborted by`, which is dangerous; tighten on a follow-up.
 
 ### 4.10 Stall detection — fold into `application/runAiSubGoal.ts`
 
@@ -291,8 +290,7 @@ Nothing is tested today. Every `§3` invariant is `TODO(test)`. Recommended test
 | §2 every persisted `steps.kind` matches the documented payload shape            | —                         | —                                                                 | TODO(test)                                                   |
 | §2 trace event vocabulary completeness                                          | —                         | —                                                                 | TODO(test, static-grep cross-checked with observability-log) |
 | §6 `toolDefs` exposes neither `finish` nor `finish_step` (interception correct) | `__tests__/tools.test.ts` | `does not include finish` / `does not include finish_step either` | done                                                         |
-| §6 ⚠️ `block_end` is emitted twice on a successful rescue                       | —                         | —                                                                 | TODO(test)                                                   |
-| §6 ⚠️ `resumed` event is published by route, not by agent                       | —                         | —                                                                 | TODO(test)                                                   |
+| §6 single `block_end` per block (rescue merge)                                  | `__tests__/blockOutcome.test.ts` | `mergeRescuedOutcome` cases                                | done                                                         |
 | §6 ⚠️ `ctx.memory` cap (`MAX_MEMORY_ENTRIES = 200`)                             | —                         | —                                                                 | TODO(test)                                                   |
 
 ### Deliberately not tested
@@ -305,15 +303,15 @@ Nothing is tested today. Every `§3` invariant is `TODO(test)`. Recommended test
 
 ### Drift — must address during the Phase 4 refactor
 
-- ⚠️ **`chatWithRetry` is in the wrong layer.** Lives at lines `31–74`; per `_LAYERS.md` belongs at `infrastructure/llm/chatWithRetry.ts`. Owns nothing run-specific. (Cross-spec with `llm-client.md` §6.)
-- ⚠️ **`Step.kind` type union understates reality.** `db.ts` declares five (`thought | tool_call | tool_result | error | final`); this module persists ten (`block_start, block_end, var_set, remember, messages_export` extra). Anyone reading typed `Step` rows will mis-narrow. Fix: hoist `StepKind` into `domain/run.ts` as a single source of truth and widen `db.ts`'s `Step` type. Cross-spec with `persistence.md` §6.
+- **Resolved — `chatWithRetry` relocated.** Now at `server/src/infrastructure/llm/chatWithRetry.ts`, along with `RETRY_BACKOFFS_MS`, `isTransientLLMError`, and `ChatRequest`. Regression: `__tests__/chatWithRetry.test.ts`.
+- **Resolved — `Step.kind` type union now full.** `STEP_KINDS` and `StepKind` live in `domain/run.ts`; `db.ts` re-uses them. `page_state` / `stats` are also persisted now. Cross-spec with `persistence.md` §6.
 - **Resolved — `finish` vs `finish_step` interception drift.** `tools.ts::toolDefs` no longer declares `finish`; the model sees only `finish_step` (appended by `toolsForAiBlock`). `runAiSubGoal` intercepts it before dispatch. Regression: `__tests__/tools.test.ts`.
 - **Resolved — single `block_end` per block.** `executeBlocks` now invokes the rescue path before emitting `block_end` and merges the outcome via `mergeRescuedOutcome` (`server/src/blockOutcome.ts`). One emission, one `steps` row, regardless of whether rescue happened. Regression: `__tests__/blockOutcome.test.ts`.
-- ⚠️ **`resumed` SSE event documented in `AgentEvent` union but never emitted by this module.** The `kind: "resumed"` event is published by `routes/runs.ts` on `POST /resume`. The `AgentEvent` union here advertises it. Either move the type to a shared `SseEvent` union in `domain/run.ts` (the right answer per `_LAYERS.md`), or remove `resumed` from `AgentEvent`. The current state misleads readers into thinking the agent emits it.
+- **Resolved — `resumed` SSE event ownership.** `EndEvent` and the `STEP_KINDS` / `LIVE_ONLY_KINDS` surfaces hoisted to `domain/run.ts`; `bus.ts`, `routes/runs.ts`, and `agent.ts` consume them. The `AgentEvent` union still advertises `resumed` deliberately so subscribers see one cohesive wire vocabulary; the comment in §2 calls out which module actually emits it.
+- **Resolved — `page_state` / `stats` persistence.** Both kinds are added to `STEP_KINDS` and auto-persisted via a wrapper around the `emit` callback in `runAgent`. Replaying clients see the full event history.
 - ⚠️ **CLAUDE.md "Block kinds" list is incomplete** (no `verify`, no `questionnaire`). Cross-spec with `blocks.md` §6 — already flagged there.
-- ⚠️ **CLAUDE.md "Storage" lists kinds for `steps` payloads** (`thoughts, tool_calls, tool_results, block_start, block_end, var_set, remember, page_state, stats, errors, finals`) including `page_state` and `stats` — but those events are NOT persisted by this module's `persist` closure (which only handles `thought, tool_call, tool_result, error, final, block_start, block_end, var_set, remember`). The DB does not retain page_state/stats history; reconnecting clients see them in the live phase only. Either add them to `persist` (with throttling so a 50-stat run doesn't bloat the DB) or update CLAUDE.md.
-- ⚠️ **Rescue and lessons are absent from CLAUDE.md.** The rescue feature, the `lessons` / `lessons_fts` tables, the `messages_export` row writes, the `rescue_enabled` / `rescue_model` / `rescue_on_cancel` settings, and the `ANTHROPIC_API_KEY` env var are all real, all production, and entirely undocumented in `CLAUDE.md`. The "Tasks lifecycle" and "Architecture" sections need a "rescue path" subsection. This is the biggest documentation gap surfaced by writing this spec.
-- ⚠️ **`runClaudeRescue` re-prepares an `INSERT` statement.** Lines `1446–1452` re-prepare `INSERT INTO steps ...` instead of using `runAgent`'s `insertStep` closure or the `ctx.persist` callback. The result is a parallel write path that bypasses `stepIdx`. Fix during 4.15 by routing through `RunStore.appendMessagesExport`.
+- **Resolved — Rescue and lessons documented in CLAUDE.md.** The Architecture and Tasks-lifecycle sections now cover Claude rescue, the `lessons` / `lessons_fts` tables, the `messages_export` row writes, and the `ANTHROPIC_API_KEY` / `rescue_enabled` / `rescue_model` settings.
+- **Resolved — `runClaudeRescue` step-counter race.** Replaced the inline `MAX(idx)+1` SELECT + INSERT with `ctx.persist("messages_export", payload)`. Idx allocation now flows through the same in-memory counter as the main loop.
 - ⚠️ **`buildLessonContext` failures are silently swallowed.** A `searchLessons` throw (e.g. malformed FTS5 query — see `persistence.md` §6) returns `""`; the run continues without lesson context. Acceptable, but a `trace("lessons.search_error")` would help diagnose. Same goes for `generateLesson` — failures only surface as `rescue.lesson_failed` / `rescue.lesson_error` traces.
 - ⚠️ **`RunHandle` is unused.** Declared at line `134–136`, exported, never instantiated anywhere. Dead code; remove.
 

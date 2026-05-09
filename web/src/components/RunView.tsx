@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode, type UIEvent } from "react";
+import { List, useDynamicRowHeight, useListRef, type RowComponentProps } from "react-window";
 import { StatusPill } from "./StatusPill.tsx";
 import { useUiPrompts } from "./UiPrompts.tsx";
 import { api } from "../api.ts";
@@ -11,6 +12,12 @@ import {
 } from "../state/useRunStream.ts";
 
 export type { BlockStatus, RunStatsSample };
+
+// Estimate used by react-window before a row has been measured. Most rows are
+// short (block markers, var sets, single-line thoughts), so the estimate sits
+// at the lower end and grows when actual heights are observed. We keep it the
+// same for every row identity (tied to runId so a fresh run starts fresh).
+const DEFAULT_ROW_HEIGHT = 80;
 
 export function RunView({
   runId,
@@ -30,15 +37,36 @@ export function RunView({
 }) {
   const [memoryOpen, setMemoryOpen] = useState(false);
   const [now, setNow] = useState(() => Date.now());
-  const scrollerRef = useRef<HTMLDivElement>(null);
   const { toast, confirm: askConfirm } = useUiPrompts();
 
   const { entries, status, paused, pauseInfo, pageState, memory, startedAt, finishedAt } =
     useRunStream(runId, { onStats, onBlockStatus });
 
+  // Dynamic row sizing: react-window measures rows after first render and
+  // caches the heights. Keying by runId ensures a different run starts with a
+  // fresh measurement cache (otherwise stale heights from the previous run
+  // would be used for the new entries at the same indexes).
+  const rowHeight = useDynamicRowHeight({ defaultRowHeight: DEFAULT_ROW_HEIGHT, key: runId });
+  const listRef = useListRef(null);
+
+  // Track whether the user has scrolled away from the bottom. While they
+  // are pinned to the bottom, new entries auto-scroll into view; if they
+  // scroll up to inspect a step, we leave them there.
+  const stickToBottomRef = useRef(true);
+  const lastEntriesLenRef = useRef(0);
+
   useEffect(() => {
-    scrollerRef.current?.scrollTo({ top: scrollerRef.current.scrollHeight });
-  }, [entries.length]);
+    if (entries.length === 0) {
+      lastEntriesLenRef.current = 0;
+      return;
+    }
+    if (entries.length === lastEntriesLenRef.current) return;
+    lastEntriesLenRef.current = entries.length;
+    if (!stickToBottomRef.current) return;
+    // Scroll the virtualised list to the last row. This replaces the
+    // previous `scrollerRef.current.scrollTo({ top: scrollHeight })`.
+    listRef.current?.scrollToRow({ index: entries.length - 1, align: "end", behavior: "auto" });
+  }, [entries.length, listRef]);
 
   // Tick once per second while the run is running, so the elapsed time updates live.
   useEffect(() => {
@@ -48,6 +76,13 @@ export function RunView({
   }, [status]);
 
   const elapsed = computeElapsed(startedAt, finishedAt, now);
+
+  const handleScroll = (event: UIEvent<HTMLDivElement>) => {
+    const el = event.currentTarget;
+    const distanceFromBottom = el.scrollHeight - el.clientHeight - el.scrollTop;
+    // 24px slack to absorb rounding from sub-pixel layout / dynamic row growth.
+    stickToBottomRef.current = distanceFromBottom < 24;
+  };
 
   return (
     <div className="flex h-full flex-col gap-3">
@@ -200,13 +235,37 @@ export function RunView({
         </div>
       )}
 
-      <div ref={scrollerRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
-        {entries.map((e) => (
-          <EntryCard key={e.id} entry={e} />
-        ))}
-        {entries.length === 0 && (
+      <div className="min-h-0 flex-1 pr-1">
+        {entries.length === 0 ? (
           <div className="text-xs text-zinc-500">Waiting for the agent to start…</div>
+        ) : (
+          <List
+            listRef={listRef}
+            rowCount={entries.length}
+            rowHeight={rowHeight}
+            rowComponent={EntryRow}
+            rowProps={{ entries }}
+            overscanCount={4}
+            onScroll={handleScroll}
+            style={{ height: "100%", width: "100%" }}
+          />
         )}
+      </div>
+    </div>
+  );
+}
+
+type EntryRowProps = { entries: Entry[] };
+
+function EntryRow({ index, style, entries }: RowComponentProps<EntryRowProps>) {
+  const entry = entries[index];
+  if (!entry) return null;
+  // Outer wrapper owns the row's measured height; the inner div carries the
+  // actual styling. paddingBottom replaces the previous `space-y-3` gap.
+  return (
+    <div style={style}>
+      <div style={{ paddingBottom: 12 }}>
+        <EntryCard entry={entry} />
       </div>
     </div>
   );
@@ -342,3 +401,4 @@ function computeElapsed(
   const end = parseSqliteUtc(finishedAt) ?? now;
   return formatDuration(end - start);
 }
+

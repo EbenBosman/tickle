@@ -114,7 +114,7 @@ When Phase 3 begins (test scaffolding), tackle in this order — easiest first, 
 2. **`blocks.ts`** — `substituteVars`, `parseBlocks`, `walkBlocks` — pure functions over data.
 3. **`loadEnv.ts`, `log.ts`** — small surface, deterministic with `memfs`.
 4. **`loginDetect.ts`, `tools.ts::read_text`** — Page-evaluate logic; integration test with `setContent` fixtures.
-5. **`chatWithRetry`** (post-move to `infrastructure/llm/`) — fake-timer + scripted-response classic.
+5. **`chatWithRetry`** (now at `infrastructure/llm/chatWithRetry.ts`) — fake-timer + scripted-response classic.
 6. **HTTP routes** — `app.inject()` against in-memory SQLite.
 7. **`agent.ts`** orchestration — only after the above are green, since it composes everything. This is also when refactoring per `agent.md` §4 starts.
 

@@ -40,13 +40,13 @@ The route used to do literal string concat (`screenshots/${rest}`) and serve any
 
 PII surface in user `fill` values and extracted page text remains — those are not denylisted because they are signal, not secrets, and call sites that log them already do so with intent. The same denylist will be reused when `/api/export` gets a redaction layer (see [`http-export.md`](../server/http-export.md)).
 
-### 🟠 Compile preview has no danger affordances
+### Compile preview danger affordances (resolved, partial)
 
-The "human-review-before-execute" gate per `http-compile.md` §6 is the load-bearing injection defence. But `CompileFromText.tsx` shows blocks as plain `kind` + summary — a `navigate evil.com` looks identical to a `navigate google.com`. Review becomes a rubber stamp. See [`web/compile.md`](../web/compile.md). **Target:** off-host-navigate banner, credential-pattern flag (looks-like-an-email-address-in-a-`fill`-value), per-block accept rather than all-or-nothing.
+The "human-review-before-execute" gate per `http-compile.md` §6 is the load-bearing injection defence. `web/src/state/compileFlags.ts` now exposes pure detectors: `isExternalUrl` flags off-localhost `navigate` blocks; `looksLikeCredential` flags `fill` blocks whose target description or value matches credential / SSN / credit-card patterns. The preview shows a "Review carefully — N blocks flagged" banner when any flag fires, plus per-block badges with the reason. Regression: `web/src/__tests__/compileFlags.test.ts`. Remaining gap: per-block accept rather than all-or-nothing.
 
-### 🟠 `/api/blocks/compile` has no input length cap
+### `/api/blocks/compile` input length cap (resolved)
 
-User free text interpolated directly into the user message. No injection-resistant framing in the system prompt. The shape sanitiser is the only server-side defence. See [`http-compile.md`](../server/http-compile.md). **Target:** length cap on `prompt`; system prompt prefix instructing the model to treat the input as data.
+`MAX_COMPILE_PROMPT_CHARS = 8000`; over-cap requests return `413` without invoking the LLM. Regression: `server/src/routes/__tests__/compile.test.ts`. Injection-resistant framing in the system prompt remains a separate hardening item.
 
 ### 🟠 `/api/export` is buffered and full-corpus only
 
@@ -56,21 +56,21 @@ No date / run / task filter. Drains every `messages_export` row at once. PII (us
 
 This is the threat model — but it deserves an explicit decision when (if ever) tickle goes multi-host. **Target (when needed):** localhost-only Unix-socket transport, OR a per-install token in `~/.tickle/auth` that the UI reads and the server checks. Don't add HTTP basic auth — it's worse than no auth for the cross-site-scripting case.
 
-### 🟡 `runs.status` has no CHECK constraint
+### `runs.status` CHECK constraint (resolved)
 
-A bug elsewhere could persist arbitrary strings. Not exploitable, but the schema should refuse. See [`persistence.md`](../server/persistence.md). **Target:** `CHECK (status IN ('running', 'done', 'error', 'cancelled'))`.
+Table-level CHECK on fresh DBs plus matching INSERT/UPDATE triggers (`runs_status_check_*`) on existing DBs. Regression: `server/src/routes/__tests__/runs.test.ts`.
 
-### 🟡 Visibility-check inconsistency between `loginDetect` and `formScan`
+### Visibility-check unification (resolved)
 
-`loginDetect` does string `opacity !== "0"` (misses `"0.0"`); `formScan` does `parseFloat(opacity) === 0`. False negatives in `loginDetect` mean an actual login surface might not auto-pause. Low likelihood but security-flavoured. **Target:** consolidate visibility checks into one helper in `infrastructure/browser/visibility.ts`. See [`login-guard.md`](../server/login-guard.md), [`form-scan.md`](../server/form-scan.md).
+`server/src/visibility.ts` exports `isVisuallyHidden(style, rect?)` with `parseFloat(opacity) === 0`. `formScan.ts` and `loginDetect.ts` keep their inline `page.evaluate` copies (mirrored logic, marked `keep-in-sync: visibility.ts`) so the same `0.0` / `0.00` opacity case is caught in both. Regression: `server/src/__tests__/loginDetect.test.ts`.
 
-### 🟡 Snapshot doesn't filter `aria-hidden="true"`
+### Snapshot `aria-hidden` filter (resolved)
 
-Could surface visually-decorative-but-DOM-active elements. Combined with the visibility-check inconsistency above. See [`snapshot.md`](../server/snapshot.md).
+`snapshot.ts::isVisible` now rejects elements with an `aria-hidden="true"` ancestor via `el.closest("[aria-hidden='true']")`. `aria-hidden="false"` does NOT hide. Regression: `server/src/__tests__/snapshot.test.ts`.
 
-### 🟡 Stale `data-tickle-id` tags persist across snapshots
+### Stale `data-tickle-id` cleanup (resolved)
 
-A buggy caller passing a stale id to `act` could match the wrong element. Today defended by the executor's re-snapshot discipline. Trust-but-verify. See [`snapshot.md`](../server/snapshot.md).
+`snapshot.ts` and `formScan.ts` now strip stale `[data-tickle-id]` attributes at the top of each `page.evaluate` block before retagging. `act` resolves ids strictly within one snapshot→act window. Regression: `server/src/__tests__/snapshot.test.ts`.
 
 ## Defences in depth — what works today
 

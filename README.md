@@ -96,6 +96,11 @@ npm run dev:web      # only Vite
 
 Copy `server/.env.example` to `server/.env` and edit. The defaults match LM Studio at `http://127.0.0.1:1234/v1`. The full list of variables is documented inline in `server/.env.example`.
 
+A few non-obvious ones worth knowing about:
+
+- `TICKLE_PROFILE_DIR`, `TICKLE_SHOTS_DIR`, `TICKLE_DB_PATH` — override the on-disk locations of the persistent Chromium profile, screenshot files, and SQLite database. Absolute paths pass through; relative paths resolve against `server/`. Useful for moving state to an external drive.
+- `LOG_REDACT` — comma-separated extra keys to add to the trace-log redaction denylist. The default denylist already covers `apikey`, `authorization`, `cookie`, `password`, `token`.
+
 ## Persistent browser profile
 
 The agent uses one Chromium profile under `server/data/profile/`. Cookies, localStorage, IndexedDB, and saved-credential state survive between runs and across server restarts. To start fresh: stop the server, delete that folder, restart.
@@ -152,8 +157,15 @@ This avoids hard-coding "tabs are role=tab" / "this site uses h2 for headings" /
 
 ## Layout
 
-- `server/` — Fastify + Playwright + OpenAI-compatible LLM client + SQLite (tasks/runs/steps persist)
-- `web/` — Vite + React + Tailwind UI
+- `server/` — Fastify + Playwright + OpenAI-compatible LLM client + SQLite (tasks/runs/steps persist). Internally laid out as N-tier layers per [`docs/specs/_LAYERS.md`](docs/specs/_LAYERS.md):
+  - `src/domain/` — pure types and value objects (`run.ts` for `StepKind` / `EndEvent` / `LIVE_ONLY_KINDS`, `models.ts` for the rescue-model allowlist).
+  - `src/infrastructure/` — adapters that talk to the outside world (`llm/chatWithRetry.ts` and friends).
+  - `src/migrations/` — versioned, idempotent schema migrations recorded in a `schema_versions` table.
+  - `src/paths/` — module-anchored on-disk path resolution (profile, screenshots, DB).
+  - `src/routes/` — Fastify HTTP / SSE handlers.
+- `web/` — Vite + React + Tailwind UI:
+  - `src/state/` — non-presentational hooks and helpers (`useRunStream.ts`, `parseSqliteUtc.ts`, `compileFlags.ts`).
+  - `src/components/` — presentational React components.
 - `docs/specs/` — module-by-module contracts. Source of truth for what each part does and how it's tested. See [`docs/specs/README.md`](docs/specs/README.md).
 - `.claude/` — workflow assets (slash commands, subagents, skills) for spec-driven + TDD work in Claude Code.
 

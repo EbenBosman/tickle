@@ -8,7 +8,7 @@ Three tiny modules collected into one spec because each is too small to justify 
 
 > **Non-obvious why — `StatusPill` is the canonical status enum mirror.** The server's `RunStatus` is `running | done | error | cancelled` (see `web/src/api.ts` line 14), but `StatusPill` accepts an additional `"paused"` value synthesised by `RunView` from the orthogonal `is_paused` flag (a paused run still has `status === "running"` server-side; the UI maps `paused && status === "running"` → `"paused"` before handing the string to the pill — see `RunView.tsx` line 384). Any new server-side status that is not listed in §2's mapping table falls through to the grey fallback — that is the drift signal.
 >
-> **Non-obvious why — `TaskList` uses `window.confirm` for delete.** Native confirm is ugly but synchronous and unblockable; replacing it requires a global toast/dialog system. Same drift noted in `app-shell.md` and `run-view.md` — fix once, fix everywhere.
+> **Non-obvious why — `TaskList` delete uses `useUiPrompts().confirm`.** Migrated from `window.confirm`; the rest of the app uses the same primitive (`<UiPromptsProvider>` + `useUiPrompts()`).
 >
 > **Non-obvious why — `main.tsx` wraps in `StrictMode`.** Double-invokes effects in dev to surface SSE-subscription leaks and effect-cleanup bugs early. Production builds skip the double-invoke.
 
@@ -22,7 +22,7 @@ Three tiny modules collected into one spec because each is too small to justify 
 | `selectedId` | `number \| null`       | The matching row gets highlighted (`bg-zinc-800`). `null` → no row highlighted.  |
 | `onSelect`   | `(id: number) => void` | Fires on row body click. Not fired by the delete affordance.                     |
 | `onCreate`   | `() => void`           | Fires on the green "+ New task" button.                                          |
-| `onDelete`   | `(id: number) => void` | Fires only after `window.confirm("Delete \"<name>\"?")` returns true.            |
+| `onDelete`   | `(id: number) => void` | Fires only after `useUiPrompts().confirm({ destructive })` resolves to `true`.  |
 
 Behaviour: pure render of `tasks`, no internal state, no fetch. Empty-name rows display `"(untitled)"`. The delete `✕` button is `hidden group-hover:inline` — invisible until the row is hovered.
 
@@ -53,7 +53,7 @@ Bootstraps `<App />` into `document.getElementById("root")` via `ReactDOM.create
 
 - **I1 — `TaskList` is stateless.** No `useState`, `useEffect`, `useRef`. Falsifiable: grep the file; any hook import is a violation.
 - **I2 — `TaskList` does no I/O.** No `fetch`, no `api.*` import, no SSE. All side effects flow through the four callback props. Required by `_LAYERS.md` `ui/` layer.
-- **I3 — `TaskList` delete is gated on `window.confirm`.** `onDelete` is only invoked when confirm returns true. Falsifiable: stub `window.confirm` to return false → click `✕` → `onDelete` not called.
+- **I3 — `TaskList` delete is gated on `useUiPrompts().confirm`.** `onDelete` is only invoked when the modal resolves to `true`. Falsifiable: stub the provider's confirm to return false → click `✕` → `onDelete` not called.
 - **I4 — `TaskList` row order matches array order.** No internal sort, no filter. Falsifiable: pass `[{id:2},{id:1}]` → DOM order is 2 then 1.
 - **I5 — `StatusPill` covers every `RunStatus` value plus `"paused"`.** The five rows in §2b's mapping table must each have a non-fallback branch. Falsifiable: a unit test that asserts each of `running | paused | done | error | cancelled` produces a non-grey class set, and an unknown string produces the grey fallback.
 - **I6 — `StatusPill` mapping is the single source of truth for run-state colour.** No other component in `web/src/` should hard-code these classes. Falsifiable: grep for `bg-emerald-500/10` outside `StatusPill.tsx` — should match nowhere else for run-state purposes.
@@ -91,7 +91,7 @@ The interesting design decision is centralising status-colour logic in `StatusPi
 
 - **⚠️ Drift — `StatusPill` typed as `string`.** Should be `RunStatus | "paused"` so a new server status fails type-check rather than silently rendering grey. Fix in lockstep with widening `Run["status"]` in `web/src/api.ts` if the server ever adds a status.
 - **⚠️ Drift — `"cancelled"` and `"paused"` share amber.** Acceptable today because they never coexist in one pill, but visually conflating them is a small UX smell.
-- **⚠️ Drift — `window.confirm` for destructive delete.** Same drift noted in `app-shell.md` §7 and `run-view.md`. Replace globally with a toast/dialog primitive when the design system grows one.
+- **Resolved — `window.confirm` migrated to UiPrompts.** `<UiPromptsProvider>` + `useUiPrompts()` is the global toast/dialog primitive; `TaskList` delete now uses `confirm({ destructive })`.
 - **⚠️ Drift — `"(untitled)"` placeholder is hard-coded in `TaskList`.** If empty-name handling becomes a system-wide concern (e.g. server returns `null` names), centralise in `domain/task.ts`.
 - **❓ Open question — should `StatusPill` accept an explicit `paused` boolean prop instead of a synthesised string?** Would push the `is_paused && status === "running"` logic into the pill and remove the call-site coupling, but at the cost of a less primitive API. Worth revisiting once a third paused-aware consumer appears.
 - **❓ Open question — does `main.tsx` belong here or in its own one-liner spec?** Combined for now because nothing else lives in `web/src/` root and a spec-per-file rule would create more noise than signal.

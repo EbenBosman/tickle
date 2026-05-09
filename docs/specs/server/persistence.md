@@ -27,7 +27,7 @@ Tickle persists three things across process lifetimes: user-defined task definit
 | `searchLessons` | function | `(query, limit?=5) => Lesson[]` (FTS5 with recency fallback)                          | stable    |
 | `listLessons`   | function | `(offset?=0, limit?=50) => { lessons; total }`                                        | stable    |
 
-`RunStatus` is the literal union `"running" | "done" | "error" | "cancelled"`. `Step["kind"]` is the literal union `"thought" | "tool_call" | "tool_result" | "error" | "final"` — see §6 drift, the agent persists more kinds than this type admits.
+`RunStatus` is the literal union `"running" | "done" | "error" | "cancelled"`. `Step["kind"]` is the full `StepKind` union sourced from `domain/run.ts` (`thought | tool_call | tool_result | block_start | block_end | var_set | remember | page_state | stats | error | final | messages_export`).
 
 ### Schema
 
@@ -40,7 +40,7 @@ Tickle persists three things across process lifetimes: user-defined task definit
 |               | `created_at`      | TEXT    | no   | `datetime('now')` | UTC space-separated.                                                                                                      |
 | `runs`        | `id`              | INTEGER | no   | autoincrement PK  |                                                                                                                           |
 |               | `task_id`         | INTEGER | no   |                   | FK `tasks(id) ON DELETE CASCADE`.                                                                                         |
-|               | `status`          | TEXT    | no   |                   | One of `running \| done \| error \| cancelled`. Validated only at the type layer (no `CHECK`).                            |
+|               | `status`          | TEXT    | no   |                   | One of `running \| done \| error \| cancelled`. Enforced by a table-level `CHECK` on fresh DBs and by INSERT/UPDATE triggers (`runs_status_check_*`) on existing DBs.                            |
 |               | `result`          | TEXT    | yes  |                   | Final summary on `done`.                                                                                                  |
 |               | `error`           | TEXT    | yes  |                   | Reason on `error` / `cancelled`.                                                                                          |
 |               | `started_at`      | TEXT    | no   | `datetime('now')` | UTC space-separated.                                                                                                      |
@@ -48,7 +48,7 @@ Tickle persists three things across process lifetimes: user-defined task definit
 | `steps`       | `id`              | INTEGER | no   | autoincrement PK  |                                                                                                                           |
 |               | `run_id`          | INTEGER | no   |                   | FK `runs(id) ON DELETE CASCADE`.                                                                                          |
 |               | `idx`             | INTEGER | no   |                   | Per-run monotonic; assigned by `agent.ts` via in-memory counter.                                                          |
-|               | `kind`            | TEXT    | no   |                   | Free text in DB; agent writes `thought, tool_call, tool_result, error, final, block_start, block_end, var_set, remember`. |
+|               | `kind`            | TEXT    | no   |                   | Free text in DB; agent writes the `StepKind` union from `domain/run.ts` (`thought, tool_call, tool_result, block_start, block_end, var_set, remember, page_state, stats, error, final, messages_export`). |
 |               | `payload`         | TEXT    | no   |                   | JSON-encoded event payload.                                                                                               |
 |               | `screenshot_path` | TEXT    | yes  |                   | Relative path under `screenshots/`.                                                                                       |
 |               | `created_at`      | TEXT    | no   | `datetime('now')` | UTC space-separated.                                                                                                      |
@@ -86,10 +86,10 @@ Tickle persists three things across process lifetimes: user-defined task definit
 
 ## 4. How (briefly)
 
-- **Single-file open, side-effectful.** Importing `db.ts` opens the database, runs `CREATE TABLE IF NOT EXISTS` for every table, applies the legacy `tasks.steps` ALTER, seeds settings, and sweeps zombie `running` rows. There is no `init()`. Any module that imports `db` pays the open cost.
-- **Lazy migration strategy (single-shot).** The only schema migration today is `tasks.steps`: at module load, a `PRAGMA table_info(tasks)` scan adds the column if missing. The data backfill is even lazier — `routes/tasks.ts::ensureSteps` runs on first GET of each task, parses `instruction` via `instructionToBlocks`, and writes JSON back. Works once because there is exactly one migration. _No migration framework exists._ Adding a second migration in the same style means the file accumulates ad-hoc `if (column missing)` blocks; that path doesn't scale and is the open question for §6.
+- **Single-file open, side-effectful.** Importing `db.ts` opens the database, applies migrations from `server/src/migrations/` (idempotent, recorded in `schema_versions`), seeds settings, and sweeps zombie `running` rows. There is no `init()`. Any module that imports `db` pays the open cost.
+- **Migration framework.** Each migration is `{ id, up }` and runs in its own `BEGIN/COMMIT`; re-running on an already-migrated DB is a no-op. The initial schema (tasks/runs/steps/settings/lessons + `runs.status` triggers) is migration `001-initial-schema`, idempotent for existing DBs (`CREATE TABLE IF NOT EXISTS` throughout). The legacy lazy `tasks.steps` data backfill still runs from `routes/tasks.ts::ensureSteps` on first GET (parses `instruction` via `instructionToBlocks`, writes JSON back).
 - **Timestamp duality.** `created_at` / `started_at` use `datetime('now')` (space-separated UTC). `finished_at` is written by application code as `new Date().toISOString()` (T-separated, `Z`-suffixed). The consumer normalises both; the producer is inconsistent.
-- **Concurrency.** Single Node process, all DB calls synchronous (`DatabaseSync`). WAL mode is enabled but is largely defensive — only one writer exists. No transactions are used today; multi-statement writes (e.g. `addLesson` writing both `lessons` and `lessons_fts`) are _not_ wrapped in `BEGIN/COMMIT`, so a crash between the two leaves the FTS index out of sync. See §6.
+- **Concurrency.** Single Node process, all DB calls synchronous (`DatabaseSync`). WAL mode is enabled but is largely defensive — only one writer exists. Multi-statement writes that need atomicity (e.g. `addLesson`) are wrapped in `BEGIN/COMMIT` with `ROLLBACK` on throw.
 - **FTS5 wired manually.** `lessons_fts` is `content='lessons'` but no `INSERT/UPDATE/DELETE` triggers exist. `addLesson` writes both rows by hand; there is no `updateLesson` or `deleteLesson`, so divergence is bounded.
 
 ## 5. How tested
@@ -112,12 +112,12 @@ Tickle persists three things across process lifetimes: user-defined task definit
 
 ## 6. Drift / open questions
 
-- **⚠️ Drift — `Step["kind"]` type understates reality.** The exported type names five kinds (`thought | tool_call | tool_result | error | final`); `agent.ts::persist` writes nine (adds `block_start, block_end, var_set, remember`). Anyone reading `steps` via the typed `Step` will mis-narrow real rows. Fix: widen the union to match `agent.ts`, or extract a single `StepKind` source-of-truth in `domain/run.ts`.
+- **Resolved — `Step["kind"]` type complete.** `STEP_KINDS` / `StepKind` now live in `domain/run.ts`; `db.ts` re-exports the typed `Step` row. `agent.ts::persist` and the bus subscriber consume the same union. `page_state` / `stats` are also persisted now.
 - **⚠️ Drift — timestamp format inconsistency.** `started_at` is `"2026-05-08 13:42:01"`; `finished_at` written by application code is `"2026-05-08T13:42:01.123Z"`. Consumers cope via `parseSqliteUtc`, which accepts both. Producer should be normalised — pick ISO and use `strftime('%Y-%m-%dT%H:%M:%fZ', 'now')` everywhere, _or_ always write via JS. The current dual format is an accident, not a design.
-- **⚠️ Drift — `runs.status` has no `CHECK` constraint.** A bug or a renamed status would corrupt the column silently. Add `CHECK (status IN ('running','done','error','cancelled'))` on the next migration.
-- **⚠️ Drift — `addLesson` is not transactional.** Two separate `INSERT`s; a crash between them leaves `lessons_fts` desynced. Wrap in `db.exec('BEGIN'); …; db.exec('COMMIT')` or use SQLite's FTS5 content-table triggers instead of hand-mirroring.
+- **Resolved — `runs.status` `CHECK` constraint.** Table-level CHECK on fresh DBs plus matching INSERT/UPDATE triggers (`runs_status_check_*`) on existing DBs. Regression: `routes/__tests__/runs.test.ts`.
+- **Resolved — `addLesson` is now transactional.** The `lessons` + `lessons_fts` writes run inside `BEGIN/COMMIT` with `ROLLBACK` on throw. Regression: `__tests__/db.lessons.test.ts`.
 - **⚠️ Drift — non-obvious why for FTS5 design.** `lessons_fts` exists but the search query is sanitised by stripping non-word chars (`replace(/[^\w\s]/g, " ")`). The reason — FTS5 syntax errors on punctuation — should be a code comment or test, not folklore.
-- **❓ Open question — migration framework.** Today's "ALTER if column missing" pattern works for one migration. With two or more, we need either (a) a tiny `user_version`-driven runner, or (b) a library (`umzug`, hand-rolled). Decide before the next schema change.
+- **Resolved — migration framework.** `server/src/migrations/` with a `schema_versions` table; each migration is `{ id, up }`, runs in its own `BEGIN/COMMIT`, and is recorded by id. Initial schema is `001-initial-schema`. Regression: `__tests__/migrations.test.ts`.
 - **❓ Open question — layer split.** Per `_LAYERS.md`, this module today violates the layering by mixing `domain/` (the `Task`, `Run`, `Step`, `Lesson` types and the `RunStatus` union) with `infrastructure/` (the `DatabaseSync` instance, schema DDL, prepared statements, FTS handling, zombie sweep). **Recommendation:**
   - `domain/task.ts` — `Task` type.
   - `domain/run.ts` — `Run`, `RunStatus`, `Step`, `StepKind` (single source-of-truth, fixing the drift above).

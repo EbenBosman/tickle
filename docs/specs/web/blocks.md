@@ -63,7 +63,7 @@ This module never throws. `newBlock`'s switch is exhaustive over `BlockKind`; `s
 
 ## 3. Invariants
 
-- **`Block.id` is a string.** `newBlock` generates `crypto.randomUUID()`; falls back to `Math.random().toString(36) + Date.now().toString(36)` (NOT a UUID, NOT collision-resistant) when Web Crypto is unavailable.
+- **`Block.id` is a string.** `newBlock` generates `crypto.randomUUID()`; falls back to an RFC 4122 v4-shaped Math.random fallback (UUID-shaped) when Web Crypto is unavailable. Regression: every generated id matches the v4 regex.
 - **Type union mirrors server.** Any field added on `server/src/blocks.ts` MUST be added here in the same shape, or save/load will silently drop the field on round-trip through the editor.
 - **`KIND_META` is exhaustive.** `Record<BlockKind, …>` — TypeScript fails compile if a kind is missing.
 - **`newBlock` switch is exhaustive over `BlockKind`.** Adding a kind without a `case` is a TS error.
@@ -74,7 +74,7 @@ This module never throws. `newBlock`'s switch is exhaustive over `BlockKind`; `s
 ## 4. How (briefly)
 
 - **No state.** Pure functions and constants.
-- **`newBlock` UUID fallback** uses `Math.random` + `Date.now` to avoid throwing in environments without `crypto.randomUUID`. The collision rate is acceptable for client-side draft IDs because the server never trusts these — saved blocks keep their client-assigned ids, but uniqueness is enforced socially (a single editor instance) not cryptographically.
+- **`newBlock` UUID fallback** uses `Math.random` to fill an RFC 4122 v4-shaped string in environments without `crypto.randomUUID`, so every generated id is UUID-shaped regardless of platform. Cryptographic uniqueness is not a goal — the server never trusts client ids — but the fallback is shape-compatible with the server's UUIDs.
 - **`KIND_META` colour values are tokens, not Tailwind classes.** `BlockList.tsx` translates `meta.color` into `border-{color}-500/40` etc. via lookup tables. This indirection lets the JIT see static class strings (Tailwind cannot scan template-string concatenations).
 - **`BLOCK_KINDS` ordering is intentional:** `navigate, goal, click, fill, extract, verify, questionnaire, for_each, pause`. `pause` is last because it is the least common addition; `navigate` is first because new tasks usually start with one.
 
@@ -86,7 +86,7 @@ There are no tests for this module yet.
 | ----------------------------------------------------------- | --------- | ---------------------------------------------------------------------- | ---------- |
 | §3 every `BlockKind` value is constructable via `newBlock`  | —         | `newBlock: handles every BlockKind exhaustively`                       | TODO(test) |
 | §3 `newBlock` returns distinct ids across calls             | —         | `newBlock: ids are unique across calls`                                | TODO(test) |
-| §3 fallback id path used when `crypto.randomUUID` is absent | —         | `newBlock: falls back without crypto.randomUUID`                       | TODO(test) |
+| §3 fallback id path produces UUID-shaped ids                | `web/src/__tests__/blocks.test.ts` | uuid-shape regression                                | done       |
 | §2 `summaryOf` is total over the union                      | —         | `summaryOf: returns non-empty for every kind`                          | TODO(test) |
 | §2 `summaryOf` truncation rules per kind                    | —         | `summaryOf: 200-char and 60-char truncations apply`                    | TODO(test) |
 | §2 `blockMeta` returns metadata for every kind              | —         | `blockMeta: every BlockKind resolves`                                  | TODO(test) |
@@ -110,7 +110,7 @@ There are no tests for this module yet.
 | `BaseBlock` shape             | `{ id, kind, pauseAfter? }`                            | `{ id, kind, pauseAfter? }`                                | ✅ Identical.                                                                  |
 | Per-kind interface fields     | matches                                                | matches                                                    | ✅ Field names, types, optionality all match.                                  |
 | `newBlock` defaults           | identical values                                       | identical values                                           | ✅ But re-implemented, not imported.                                           |
-| UUID source                   | `node:crypto.randomUUID`                               | `crypto.randomUUID` with `Math.random`+`Date.now` fallback | ⚠️ Fallback is non-UUID; relies on saved-block id being client-generated only. |
+| UUID source                   | `node:crypto.randomUUID`                               | `crypto.randomUUID` with v4-shaped Math.random fallback    | ✅ Fallback is UUID-shaped. Regression: web tests assert the v4 regex.         |
 | `instructionToBlocks`         | exported                                               | NOT present                                                | server-only — UI does not migrate legacy text.                                 |
 | `parseBlocks`                 | exported                                               | NOT present                                                | server-only — UI receives `Block[]` from API.                                  |
 | `substituteVars`              | exported                                               | NOT present                                                | server-only — substitution happens in executor.                                |

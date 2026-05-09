@@ -18,7 +18,7 @@ Task definitions are the persistent input the agent operates on. This module is 
 | `GET`    | `/api/tasks/:id` | —                                                         | `200 Task` (post-`ensureSteps`)                                              | `404 { error: "not found" }`                                |
 | `POST`   | `/api/tasks`     | `{ name: string; instruction?: string; steps?: Block[] }` | `200 Task` (the inserted row)                                                | `400 { error: "name required" }` if `name` empty/whitespace |
 | `PUT`    | `/api/tasks/:id` | `{ name?; instruction?; steps?: Block[] }` (partial)      | `200 Task` (post-update)                                                     | `404 { error: "not found" }`                                |
-| `DELETE` | `/api/tasks/:id` | —                                                         | `200 { ok: true }`                                                           | — (idempotent: missing id still 200)                        |
+| `DELETE` | `/api/tasks/:id` | —                                                         | `200 { ok: true }`                                                           | `404 { error: "not found" }` for unknown ids                |
 
 `Task` shape: see `persistence.md` §2. `Block[]` shape: see `blocks.md`.
 
@@ -29,7 +29,7 @@ Task definitions are the persistent input the agent operates on. This module is 
 | `400 { error: "name required" }` | `POST` with empty/whitespace `name` | Show validation, keep editor open. |
 | `404 { error: "not found" }`     | `GET`/`PUT` for unknown id          | Treat as deleted; refresh list.    |
 
-> ⚠️ **Drift — `DELETE` returns 200 for unknown id.** No row check; SQL DELETE is silent on no-match. Cascades via `runs(task_id) ON DELETE CASCADE` (see `persistence.md` §3 I6).
+> Cascades via `runs(task_id) ON DELETE CASCADE` (see `persistence.md` §3 I6).
 
 ## 3. Invariants
 
@@ -39,14 +39,14 @@ Task definitions are the persistent input the agent operates on. This module is 
 - **I4 — Non-empty instruction migrates to a single `goal` block.** `instructionToBlocks` produces exactly `[{ id: <uuid>, kind: "goal", description: <trimmed instruction> }]`. Falsifiable: insert legacy row with `instruction="do X"`, GET, parse `steps`, expect length 1, kind `goal`, description `"do X"`.
 - **I5 — Migration is single-shot and persisted.** First GET writes the JSON back to the row; subsequent GETs hit the I2 idempotent branch. Falsifiable: GET legacy row, inspect DB directly, observe `steps` is now non-null without further GETs.
 - **I6 — `POST` and `PUT` accept `Block[]` as trusted input.** No schema validation of block `kind`, `id`, or required per-kind fields is performed on write. Whatever the client sends is `JSON.stringify`-ed into the column. The executor (`agent.ts`) is the only enforcer of block validity, at run time. ⚠️ See §6.
-- **I7 — `PUT` preserves unspecified fields.** Omitting `name`/`instruction`/`steps` keeps the existing values; sending `steps: []` explicitly clears blocks; sending `name: "  "` becomes `existing.name` (because `?.trim() ?? existing.name` falls through on empty string — see §6).
+- **I7 — `PUT` preserves unspecified fields.** Omitting `name`/`instruction`/`steps` keeps the existing values; sending `steps: []` explicitly clears blocks; sending `name: ""` or whitespace-only treats `name` as omitted (the existing name is preserved). Empty `instruction` still clears (no equivalent constraint).
 
 ## 4. How (briefly)
 
 - **`ensureSteps` algorithm.** Read-path lazy backfill. If `task.steps` is truthy, return as-is. Otherwise compute `blocks = trim(instruction) ? instructionToBlocks(instruction) : []`, `JSON.stringify`, `UPDATE tasks SET steps = ? WHERE id = ?`, return a _copy_ of the task with `steps` set to the new JSON. The DB write and the in-memory row update are separate; a crash between them yields a row that gets re-migrated on the next GET — still safe because `instructionToBlocks` is deterministic _modulo `randomUUID`_. (The block id will differ across runs; see §6.)
 - **No transactions.** Each handler is a single prepared-statement `.run()` or `.get()`. SQLite auto-commit is sufficient because no handler does multi-row writes.
 - **Validation surface.** Only `POST.name` is validated. `instruction` is trimmed but accepted empty. `steps` is type-asserted via `Array.isArray` only — element shapes are not checked.
-- **`PUT` merge semantics.** `req.body.name?.trim() ?? existing.name` — note this uses `??` (null-coalesce) on the result of `trim()`; an empty body field stays as `""` after `trim()`, which is **truthy enough to bypass `??`** and overwrites the row with `""`. ⚠️ §6.
+- **`PUT` merge semantics.** `name` is preserved when the client sends `""` or whitespace-only (treated as omitted). `instruction` and `steps` follow the simple omit-vs-present rule.
 - **Atomicity of migration.** A given task can race two concurrent GETs; both compute identical block content (Empty → `[]`; non-empty → goal block, but with _different_ random uuids). The last UPDATE wins. Practically irrelevant — the UI is single-user — but worth knowing.
 
 ## 5. How tested
@@ -61,8 +61,9 @@ Task definitions are the persistent input the agent operates on. This module is 
 | §3 I4 non-empty instruction yields single `goal` block         | —         | —         | TODO(test)                                      |
 | §3 I5 first-GET persistence to DB                              | —         | —         | TODO(test)                                      |
 | §3 I7 `PUT` field preservation when omitted                    | —         | —         | TODO(test)                                      |
-| §6 drift — `PUT name: ""` should reject (currently overwrites) | —         | —         | TODO(test) — pin current buggy behaviour or fix |
+| §3 I7 `PUT name: ""` preserves existing name                   | `routes/__tests__/tasks.test.ts` | name preservation cases | done                              |
 | §6 drift — `POST steps` rejects malformed block                | —         | —         | TODO(test) — currently no validation            |
+| §6 `DELETE` 404 on unknown id                                  | `routes/__tests__/tasks.test.ts` | unknown-id cases | done                                  |
 
 ### Deliberately not tested
 
@@ -71,9 +72,9 @@ Task definitions are the persistent input the agent operates on. This module is 
 
 ## 6. Drift / open questions
 
-- **⚠️ Drift — `PUT` empty-string overwrite.** `req.body.name?.trim() ?? existing.name` does not preserve when client sends `name: ""`: `"".trim()` is `""`, which is not nullish, so `??` returns `""` and the row's `name` is wiped. Same bug for `instruction`. Should be `req.body.name?.trim() || existing.name` _or_ explicit-presence checks. The 400 validation on `POST` does not protect `PUT`.
+- **Resolved — `PUT name: ""` no longer overwrites.** Empty-string and whitespace-only names are treated as omitted; the existing name is preserved. Empty `instruction` still clears (no equivalent constraint). Regression: `routes/__tests__/tasks.test.ts`.
 - **⚠️ Drift — no block validation on write.** §3 I6: a malformed `Block[]` round-trips through the column and only blows up at run time inside `runAiSubGoal`. Either (a) parse with a Zod schema mirroring `domain/block.ts`, or (b) document explicitly that the editor (`web/src/components/BlockList.tsx`) is the only producer and trusted. Today's behaviour is accidentally permissive.
-- **⚠️ Drift — `DELETE` always 200.** §2 errors row absence: deleting an unknown id silently succeeds. Either return `404` (consistent with `GET`/`PUT`) or document the idempotent contract. Pick one.
+- **Resolved — `DELETE /api/tasks/:id` 404 on unknown.** Now returns 404, consistent with GET/PUT. Regression: `routes/__tests__/tasks.test.ts`.
 - **⚠️ Drift — lazy migration leaks block-id volatility.** I5 + the `randomUUID` in `instructionToBlocks` mean a legacy task that has _never_ been GETed has no stable block id; a race between two concurrent GETs produces two different ids and a last-write-wins UPDATE. In a single-user UI this never bites, but it violates the spirit of "block ids are stable identifiers." Fix by computing the migration during the `db.ts` schema bootstrap once, _or_ by deriving the id deterministically from `(task_id, 0)`.
 - **⚠️ Drift — layer split.** Per `_LAYERS.md`, this file is `interface/http/routes/` and should depend on a `TaskStore` interface in `domain/`, not on `db` and `instructionToBlocks` directly. The `ensureSteps` migration belongs in `infrastructure/persistence/sqliteTaskStore.ts` (called from a store method like `getOrMigrate(id)`), not inline in the route handler. Captured at the system level in `persistence.md` §6.
 - **❓ Open question — block-schema validation.** Should `POST/PUT` reject malformed `steps`? If yes, that schema needs a single source-of-truth (`domain/block.ts` with a runtime parser); see `blocks.md`.

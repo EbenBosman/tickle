@@ -20,7 +20,7 @@ The frontend speaks to the Fastify server through exactly one module: this one. 
 | ---------- | ----- | ---------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
 | `Task`     | type  | `{ id, name, instruction, steps: string \| null, created_at }` (steps is JSON-encoded `Block[]`)                                   | mirrors `server/src/db.ts`; ⚠️ duplication  |
 | `Run`      | type  | `{ id, task_id, status: "running"\|"done"\|"error"\|"cancelled", result, error, started_at, finished_at, is_paused? }`             | mirrors `server/src/db.ts`; ⚠️ duplication  |
-| `Step`     | type  | `{ id, run_id, idx, kind: "thought"\|"tool_call"\|"tool_result"\|"error"\|"final", payload: string, screenshot_path, created_at }` | ⚠️ kind union narrower than server (see §6) |
+| `Step`     | type  | `{ id, run_id, idx, kind: full StepKind union, payload: string, screenshot_path, created_at }` | matches server's `domain/run.ts::StepKind` (kept in sync; cross-workspace shared `domain/` deferred) |
 | `Settings` | type  | `{ rescue_enabled, rescue_model, rescue_on_cancel, api_key_configured, lesson_count }`                                             | matches `http-settings.md` §2               |
 | `Lesson`   | type  | `{ id, run_id, block_id, lesson, situation, created_at }`                                                                          | stable                                      |
 | `api`      | const | object literal with the methods below; not a class                                                                                 | stable                                      |
@@ -33,7 +33,7 @@ The frontend speaks to the Fastify server through exactly one module: this one. 
 | `api.getTask(id)`                      | `GET /api/tasks/:id`                                        | `http-tasks` §2    | `Task`                                 | 404 → throw                                                                 |
 | `api.createTask(name, instruction)`    | `POST /api/tasks` body `{ name, instruction }`              | `http-tasks` §2    | `Task`                                 | does **not** send `steps`                                                   |
 | `api.updateTask(id, patch)`            | `PUT /api/tasks/:id` body `{ name?, instruction?, steps? }` | `http-tasks` §2    | `Task`                                 | partial; `steps` is `Block[]` (JSON-stringified by `JSON.stringify(patch)`) |
-| `api.deleteTask(id)`                   | `DELETE /api/tasks/:id`                                     | `http-tasks` §2    | `unknown`                              | server always 200 (idempotent)                                              |
+| `api.deleteTask(id)`                   | `DELETE /api/tasks/:id`                                     | `http-tasks` §2    | `{ ok: true }`                         | server returns 404 for unknown ids                                          |
 | `api.startRun(taskId)`                 | `POST /api/tasks/:id/run`                                   | `http-runs` §2     | `{ run_id: number }`                   |                                                                             |
 | `api.cancelRun(runId)`                 | `POST /api/runs/:id/cancel`                                 | `http-runs` §2     | `{ ok: boolean }`                      | client discards `mode` field returned by server                             |
 | `api.pauseRun(runId)`                  | `POST /api/runs/:id/pause`                                  | `http-runs` §2     | `{ ok: boolean }`                      |                                                                             |
@@ -51,7 +51,7 @@ The frontend speaks to the Fastify server through exactly one module: this one. 
 
 ### SSE / streaming surface
 
-This module **does not own SSE**. `EventSource` for `GET /api/runs/:id/stream` (per `http-runs` §2) is constructed inline in `web/src/components/RunView.tsx:134`. ⚠️ Per `_LAYERS.md`, the run-stream subscription belongs in `state/useRunStream.ts` — a `ui/`-tier component should not be opening sockets. See §6.
+This module **does not own SSE**. `EventSource` for `GET /api/runs/:id/stream` (per `http-runs` §2) lives in `web/src/state/useRunStream.ts`. `RunView.tsx` consumes the hook; this module covers REST only.
 
 ### Errors
 
@@ -77,7 +77,7 @@ Special-case: `api.clearTaskRuns` does **not** route through `j<T>`. It inspects
 - **I5 — `clearTaskRuns` is the only method with a 409 fast-path.** All other 409s (`/cancel`, `/pause`, `/resume`, `DELETE /api/runs/:id`) become generic thrown errors stringifying status + body.
 - **I6 — Method names mirror server resources, not REST verbs.** `startRun`/`cancelRun`/`pauseRun`/`resumeRun`/`deleteRun` are intent-named, not e.g. `runs.create()`. New endpoints should follow the same pattern.
 - **I7 — `Block` is imported from `web/src/blocks.ts`, not from `server/`.** TypeScript path constraint: this module's only project-relative import is `./blocks.ts`. Falsifiable: `import` graph audit.
-- **I8 — `parseSqliteUtc` is not in this module.** Lives in `web/src/components/RunView.tsx:570`. ⚠️ Per `_LAYERS.md` it should be promoted to `state/parseSqliteUtc.ts` (or `domain/`) so other consumers don't reinvent it. See §6.
+- **I8 — `parseSqliteUtc` is not in this module.** Lives in `web/src/state/parseSqliteUtc.ts` (with sibling `formatDuration` and `runDuration`). `RunView.tsx` and `App.tsx` both consume it.
 
 ## 4. How (briefly)
 
@@ -109,14 +109,14 @@ Special-case: `api.clearTaskRuns` does **not** route through `j<T>`. It inspects
 ## 6. Drift / open questions
 
 - **⚠️ Drift — type duplication with server (`_LAYERS.md` target).** `Task`, `Run`, `Step` here are hand-copies of `server/src/db.ts`. `Block` and `BlockKind` in `web/src/blocks.ts` mirror `server/src/blocks.ts`. The post-refactor target is `web/src/domain/` mirroring `server/src/domain/` (per `_LAYERS.md`). Migration plan: extract a `domain/` package on each side, or a shared workspace package, before the next type addition.
-- **⚠️ Drift — `Step.kind` union is narrower than server.** This module declares `"thought" | "tool_call" | "tool_result" | "error" | "final"` (5 variants). Server's bus events include also `block_start`, `block_end`, `var_set`, `page_state`, `stats`, `paused`, `resumed`, `remember`, `end` (see `http-runs` §2 SSE). Persisted `steps` rows can carry any of those `kind`s — the type lies. `RunView.tsx`'s SSE consumer reads `data.kind` as `string`, so the lie is invisible at runtime, but a caller switching on `step.kind` with TypeScript exhaustiveness would silently miss handlers. Resolve by widening to the full `SseEvent.kind` union sourced from `domain/`.
-- **⚠️ Drift — `parseSqliteUtc` lives in `RunView.tsx`.** CLAUDE.md names it the canonical normaliser; it should be in `state/` (or `domain/`), not in a `ui/` component file. Promote when the next consumer appears.
-- **⚠️ Drift — SSE not in `state/`.** `EventSource` for `/api/runs/:id/stream` is opened in `RunView.tsx:134`. `_LAYERS.md` requires `state/` to own subscriptions; `ui/` should consume a hook. Carve out `state/useRunStream.ts` in the next refactor pass.
+- **Resolved — `Step.kind` widened.** The web `Step["kind"]` is now the full `StepKind` union, matching the server's `domain/run.ts::StepKind` (kept in sync; cross-workspace shared `domain/` deferred until a `shared/` workspace lands). RunView's SSE consumer can switch on the full set.
+- **Resolved — `parseSqliteUtc` extracted.** Lives in `web/src/state/parseSqliteUtc.ts` with sibling `formatDuration` and `runDuration`. `RunView.tsx` and `App.tsx::runDuration` consume it. Regression: `web/src/__tests__/parseSqliteUtc.test.ts`.
+- **Resolved — SSE in `state/`.** `EventSource` lifecycle is owned by `web/src/state/useRunStream.ts`; `RunView.tsx` consumes the hook.
 - **⚠️ Drift — silent field discards.** `cancelRun` discards the server's `mode: "live" | "force"` (`http-runs` §2), `deleteRun` and `clearTaskRuns` discard `screenshots_removed`. Either type the return more accurately or document explicitly that the client doesn't need them. The "force" mode in particular is interesting telemetry the UI throws away.
 - **⚠️ Drift — no client method for `/screenshots/*`.** Screenshot PNG URLs are constructed inline by `RunView.tsx` as `/screenshots/<path>`. Acceptable (it's an `<img src>`, not a fetch) but undocumented here.
 - **⚠️ Drift — no coverage of the `messages_export` SSE event or any future `remember` events.** As `agent.ts` adds new `kind`s to the bus, this file does not need updates (untyped passthrough), but `Step.kind` does.
 - **⚠️ Drift — fragile-on-204.** `j<T>` calls `res.json()` unconditionally on 2xx. If a server route ever returns 204 No Content, this will throw a SyntaxError. Today no route does (`api.deleteTask` for instance returns `{ ok: true }`); pin this contract with a test or harden `j<T>` to handle empty bodies.
-- **⚠️ Drift — `api.deleteTask` typed as `Promise<unknown>`.** Other delete methods are `Promise<{ ok: boolean }>`. Inconsistent; widen all to a `DeleteResult` type or narrow this one.
+- **Resolved — `api.deleteTask` typing.** Now `Promise<{ ok: true }>`, matching the other delete methods.
 - **❓ Open — production base URL.** No env-driven `VITE_API_BASE_URL`. Add when the first non-localhost deployment lands; until then, document "same-origin assumed" here.
 - **❓ Open — should the export endpoint accept `since`/`run_id`?** Mirrors the `http-export.md` §6 question; the client would then need new optional args.
 

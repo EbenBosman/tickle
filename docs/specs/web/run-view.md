@@ -22,7 +22,7 @@
 | `BlockStatus`    | type     | `"pending" \| "running" \| "done" \| "failed" \| "skipped"`                                                      | stable    |
 | `RunStatsSample` | type     | `{ model: string; prompt_tokens: number; output_tokens: number; eval_duration_ms: number; tps: number }`         | stable    |
 | `EntryCard`      | —        | local; not exported.                                                                                             | —         |
-| `parseSqliteUtc` | —        | local; not exported. Should move to `state/parseSqliteUtc.ts` per `_LAYERS.md` (re-used by other date displays). | drift     |
+| `parseSqliteUtc` | —        | imported from `web/src/state/parseSqliteUtc.ts` (with sibling `formatDuration` and `runDuration`). | stable    |
 
 ### Props (`RunViewProps`)
 
@@ -44,7 +44,7 @@
 
 | Source                                                          | Surface                                                          |
 | --------------------------------------------------------------- | ---------------------------------------------------------------- |
-| `api.pauseRun` / `resumeRun` / `cancelRun` / `deleteRun` reject | `alert(...)` with the error message. No retry, no inline banner. |
+| `api.pauseRun` / `resumeRun` / `cancelRun` / `deleteRun` reject | Surfaced via `useUiPrompts().toast.error(...)` (auto-dismissing toast). No retry. |
 | `EventSource.onerror`                                           | `es.close()` — no auto-reconnect, no UI signal. See §6.          |
 | `api.getRun` reject (mount or post-`end`)                       | Silently swallowed (`.catch(() => {})`).                         |
 
@@ -95,8 +95,8 @@ The current single file mixes **eight** concerns. The `_LAYERS.md` target carves
 
 | Concern in today's `RunView.tsx`                                                                                                                                       | Target file (`web/src/features/run-view/` unless noted)                                                                     |
 | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| EventSource lifecycle, replay handling, identity-reset on `runId` change, mount/`end` `getRun` fallbacks                                                               | `state/useRunStream.ts` (hook returning `{ entries, status, paused, pauseInfo, pageState, memory, startedAt, finishedAt }`) |
-| `parseSqliteUtc`, `formatDuration`, `computeElapsed`, the 1s interval, freeze-on-terminal logic                                                                        | `state/parseSqliteUtc.ts` + `Timer.tsx` (presentational; takes `startedAt`, `finishedAt` props)                             |
+| EventSource lifecycle, replay handling, identity-reset on `runId` change, mount/`end` `getRun` fallbacks                                                               | **done** — `state/useRunStream.ts` returns `{ entries, status, paused, pauseInfo, pageState, memory, startedAt, finishedAt }`; `renderStepBody` is exported as `renderStepBody`. Callbacks (`onStats`, `onBlockStatus`) flow through a ref so they don't force the effect to re-run. |
+| `parseSqliteUtc`, `formatDuration`, `runDuration`                                                                                                                      | **done** — `state/parseSqliteUtc.ts`. The 1s interval and freeze-on-terminal logic still live in `RunView.tsx` (next step: `Timer.tsx`).                                                |
 | Header (Run #, elapsed pill, Pause/Resume/Stop/Delete buttons, status pill)                                                                                            | `RunView.tsx` orchestration + a small `RunHeader.tsx`                                                                       |
 | `pageState` banner                                                                                                                                                     | `PageStateBanner.tsx` (props: `{ url, title } \| null`)                                                                     |
 | Auto-pause amber explainer panel                                                                                                                                       | `PauseBanner.tsx` (props: `{ reason?, auto? }`)                                                                             |
@@ -140,7 +140,7 @@ Cross-cutting:
 - **⚠️ Drift — replay-then-live can dupe entries on reconnect.** Because the server has no `Last-Event-ID` cursor (per `http-runs` §6), each reconnect re-replays from idx 0. If we ever do reconnect, the component will append a second copy of every prior entry. The `id` prefix scheme (`r-<idx>`, `t-<counter>`, …) does **not** dedupe across reconnects.
 - **⚠️ Drift — unbounded entry array.** No pruning, no virtualisation. A 30-minute run with thousands of tool calls allocates thousands of `Entry` objects and renders them all on every state change. Carve into `EntryStream.tsx` and add windowing.
 - **⚠️ Drift — auto-scroll fights the user.** The scroller jumps to bottom on every append, even if the user has scrolled up to read history. Standard fix: only auto-scroll when the scroller is already within ~50px of the bottom.
-- **⚠️ Drift — `alert()` for action errors.** Pause/resume/cancel/delete failures use `window.alert`. Replace with a toast or inline banner during refactor.
-- **⚠️ Drift — `parseSqliteUtc` is duplicated knowledge.** The same parsing logic exists implicitly anywhere SQLite timestamps surface in the UI. Extract to `state/parseSqliteUtc.ts` and reuse.
+- **Resolved — toast/confirm UI prompts.** `<UiPromptsProvider>` exposes `useUiPrompts()` with `toast.error/info/success` and `confirm({ destructive })`. Pause/resume/cancel/delete failures now flow through `toast.error`. Provider mounted in `main.tsx` above `<App>`.
+- **Resolved — `parseSqliteUtc` extracted.** Now at `web/src/state/parseSqliteUtc.ts`. Regression: `web/src/__tests__/parseSqliteUtc.test.ts`.
 - **❓ Open question — should `RunView` own the `getRun` seed or should the parent pass `Run` as a prop?** Today `RunView` fetches `getRun` on mount. The parent `App.tsx` may have already fetched the same row. After the refactor, `useRunStream` could accept an optional `seedRun: Run` prop to avoid the second round-trip.
 - **❓ Open question — `onBlockStatus` semantics for nested blocks.** With `for_each` body blocks, two `block_start`s can fire before either `block_end`. The current `latestRunningRef` is "last started, not yet ended (if matched)" — adequate for highlighting, but the parent's `BlockList` may want a stack-aware notion. Defer until a UX requirement appears.
