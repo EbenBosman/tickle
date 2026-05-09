@@ -2,6 +2,7 @@ import { useState } from "react";
 import { api } from "../api.ts";
 import { type Block } from "../blocks.ts";
 import { flagBlock, flagBlocks } from "../state/compileFlags.ts";
+import { useUiPrompts } from "./UiPrompts.tsx";
 
 export function CompileFromText({
   disabled,
@@ -17,6 +18,7 @@ export function CompileFromText({
   const [busy, setBusy] = useState(false);
   const [proposed, setProposed] = useState<Block[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const { confirm: askConfirm } = useUiPrompts();
 
   const generate = async () => {
     if (!text.trim()) return;
@@ -37,11 +39,14 @@ export function CompileFromText({
     }
   };
 
-  const apply = (mode: "replace" | "append") => {
+  const apply = async (mode: "replace" | "append") => {
     if (!proposed) return;
     if (mode === "replace" && existingCount > 0) {
-      if (!confirm(`Replace existing ${existingCount} block${existingCount === 1 ? "" : "s"}?`))
-        return;
+      const ok = await askConfirm(
+        `Replace existing ${existingCount} block${existingCount === 1 ? "" : "s"}?`,
+        { destructive: true },
+      );
+      if (!ok) return;
     }
     onApply(proposed, mode);
     setProposed(null);
@@ -122,8 +127,8 @@ export function CompileFromText({
                   Review carefully — {flags.length} block{flags.length === 1 ? "" : "s"} flagged
                 </div>
                 <div className="mt-0.5 text-[11px] text-amber-200/80">
-                  This compile produced steps that touch off-host URLs or credential-shaped
-                  fields. Confirm each is intended before applying.
+                  This compile produced steps that touch off-host URLs or credential-shaped fields.
+                  Confirm each is intended before applying.
                 </div>
               </div>
             );

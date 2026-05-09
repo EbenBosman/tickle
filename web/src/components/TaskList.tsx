@@ -1,4 +1,5 @@
 import type { Task } from "../api.ts";
+import { useUiPrompts } from "./UiPrompts.tsx";
 
 export function TaskList({
   tasks,
@@ -13,6 +14,7 @@ export function TaskList({
   onCreate: () => void;
   onDelete: (id: number) => void;
 }) {
+  const { confirm } = useUiPrompts();
   return (
     <div className="flex h-full flex-col gap-3">
       <button
@@ -37,8 +39,8 @@ export function TaskList({
               {t.name || "(untitled)"}
             </button>
             <button
-              onClick={() => {
-                if (confirm(`Delete "${t.name}"?`)) onDelete(t.id);
+              onClick={async () => {
+                if (await confirm(`Delete "${t.name}"?`, { destructive: true })) onDelete(t.id);
               }}
               className="ml-2 hidden text-xs text-zinc-500 hover:text-red-400 group-hover:inline"
               aria-label="Delete"

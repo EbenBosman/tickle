@@ -5,6 +5,7 @@ import { TaskEditor } from "./components/TaskEditor.tsx";
 import { RunView, type RunStatsSample, type BlockStatus } from "./components/RunView.tsx";
 import { StatusPill } from "./components/StatusPill.tsx";
 import { SettingsPage } from "./components/SettingsPage.tsx";
+import { useUiPrompts } from "./components/UiPrompts.tsx";
 import { runDuration } from "./state/parseSqliteUtc.ts";
 
 // Fallback if /api/health doesn't return context_window for some reason.
@@ -29,6 +30,7 @@ export default function App() {
   const [serverContextWindow, setServerContextWindow] = useState<number>(CONTEXT_WINDOW_FALLBACK);
   const [blockStatusMap, setBlockStatusMap] = useState<Record<string, BlockStatus>>({});
   const [runningBlockId, setRunningBlockId] = useState<string | null>(null);
+  const { toast } = useUiPrompts();
 
   const refresh = async () => setTasks(await api.listTasks());
 
@@ -144,7 +146,7 @@ export default function App() {
                 setSelectedId(t.id);
                 setActiveRunId(null);
               } catch (err) {
-                alert(`Could not create task: ${(err as Error).message}`);
+                toast.error(`Could not create task: ${(err as Error).message}`);
               }
             }}
             onDelete={async (id) => {
@@ -153,7 +155,7 @@ export default function App() {
                 if (selectedId === id) setSelectedId(null);
                 await refresh();
               } catch (err) {
-                alert(`Could not delete: ${(err as Error).message}`);
+                toast.error(`Could not delete: ${(err as Error).message}`);
               }
             }}
           />
@@ -288,36 +290,42 @@ function RecentRuns({ taskId, onOpen }: { taskId: number; onOpen: (id: number) =
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [taskId]);
 
+  const { toast, confirm: askConfirm } = useUiPrompts();
+
   const deleteOne = async (id: number) => {
-    if (!confirm(`Delete run #${id}?`)) return;
+    if (!(await askConfirm(`Delete run #${id}?`, { destructive: true }))) return;
     try {
       await api.deleteRun(id);
       await refresh();
     } catch (err) {
-      alert(`Could not delete: ${(err as Error).message}`);
+      toast.error(`Could not delete: ${(err as Error).message}`);
     }
   };
 
   const clearAll = async () => {
-    if (!confirm(`Delete all ${runs.length} runs for this task?`)) return;
+    if (
+      !(await askConfirm(`Delete all ${runs.length} runs for this task?`, { destructive: true }))
+    )
+      return;
     try {
       await api.clearTaskRuns(taskId, { resetIds: true });
       await refresh();
     } catch (err) {
       const e = err as Error & { status?: number; active?: number };
       if (e.status === 409) {
-        const proceed = confirm(
-          `${e.active ?? "Some"} run(s) are still marked "running" — likely zombies from a server restart.\n\nForce-delete them all and reset run numbering?`,
+        const proceed = await askConfirm(
+          `${e.active ?? "Some"} run(s) are still marked "running" — likely zombies from a server restart. Force-delete them all and reset run numbering?`,
+          { destructive: true },
         );
         if (!proceed) return;
         try {
           await api.clearTaskRuns(taskId, { force: true, resetIds: true });
           await refresh();
         } catch (err2) {
-          alert(`Could not force-clear: ${(err2 as Error).message}`);
+          toast.error(`Could not force-clear: ${(err2 as Error).message}`);
         }
       } else {
-        alert(`Could not clear: ${e.message}`);
+        toast.error(`Could not clear: ${e.message}`);
       }
     }
   };

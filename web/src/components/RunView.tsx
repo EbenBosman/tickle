@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { StatusPill } from "./StatusPill.tsx";
+import { useUiPrompts } from "./UiPrompts.tsx";
 import { api } from "../api.ts";
 import { parseSqliteUtc, formatDuration } from "../state/parseSqliteUtc.ts";
 import {
@@ -30,6 +31,7 @@ export function RunView({
   const [memoryOpen, setMemoryOpen] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const scrollerRef = useRef<HTMLDivElement>(null);
+  const { toast, confirm: askConfirm } = useUiPrompts();
 
   const { entries, status, paused, pauseInfo, pageState, memory, startedAt, finishedAt } =
     useRunStream(runId, { onStats, onBlockStatus });
@@ -94,7 +96,7 @@ export function RunView({
                     try {
                       await api.resumeRun(runId);
                     } catch (err) {
-                      alert(`Could not resume: ${(err as Error).message}`);
+                      toast.error(`Could not resume: ${(err as Error).message}`);
                     }
                   }}
                   className="rounded-md border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-0.5 text-xs font-medium text-emerald-200 hover:bg-emerald-500/20"
@@ -107,7 +109,7 @@ export function RunView({
                     try {
                       await api.pauseRun(runId);
                     } catch (err) {
-                      alert(`Could not pause: ${(err as Error).message}`);
+                      toast.error(`Could not pause: ${(err as Error).message}`);
                     }
                   }}
                   className="rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-0.5 text-xs font-medium text-amber-200 hover:bg-amber-500/20"
@@ -120,7 +122,7 @@ export function RunView({
                   try {
                     await api.cancelRun(runId);
                   } catch (err) {
-                    alert(`Could not cancel: ${(err as Error).message}`);
+                    toast.error(`Could not cancel: ${(err as Error).message}`);
                   }
                 }}
                 className="rounded-md border border-red-500/40 bg-red-500/10 px-2.5 py-0.5 text-xs font-medium text-red-200 hover:bg-red-500/20"
@@ -131,12 +133,12 @@ export function RunView({
           ) : (
             <button
               onClick={async () => {
-                if (!confirm(`Delete run #${runId}?`)) return;
+                if (!(await askConfirm(`Delete run #${runId}?`, { destructive: true }))) return;
                 try {
                   await api.deleteRun(runId);
                   onDeleted?.();
                 } catch (err) {
-                  alert(`Could not delete: ${(err as Error).message}`);
+                  toast.error(`Could not delete: ${(err as Error).message}`);
                 }
               }}
               className="rounded-md border border-zinc-700 bg-zinc-900 px-2.5 py-0.5 text-xs text-zinc-400 hover:border-red-500/40 hover:text-red-300"
