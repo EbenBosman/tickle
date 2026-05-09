@@ -62,6 +62,7 @@ export default tseslint.config(
   },
   {
     files: ["src/**/__tests__/**/*.{ts,tsx}"],
+    // (already correct; left as-is)
     languageOptions: {
       globals: { ...globals.browser, ...globals.node },
     },

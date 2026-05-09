@@ -63,10 +63,7 @@ describe("read_text — happy path", () => {
   });
 
   it("respects a CSS selector argument", async () => {
-    const text = await readText(
-      '<div id="a">A</div><div id="b">B</div>',
-      "#b",
-    );
+    const text = await readText('<div id="a">A</div><div id="b">B</div>', "#b");
     expect(text).toContain("B");
     expect(text).not.toContain("A");
   });

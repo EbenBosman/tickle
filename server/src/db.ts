@@ -2,8 +2,10 @@ import { DatabaseSync } from "node:sqlite";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 
-const DB_PATH = "data/tickle.db";
-mkdirSync(dirname(DB_PATH), { recursive: true });
+const DB_PATH = process.env.TICKLE_DB_PATH ?? "data/tickle.db";
+if (DB_PATH !== ":memory:") {
+  mkdirSync(dirname(DB_PATH), { recursive: true });
+}
 
 export const db = new DatabaseSync(DB_PATH);
 db.exec("PRAGMA journal_mode = WAL;");

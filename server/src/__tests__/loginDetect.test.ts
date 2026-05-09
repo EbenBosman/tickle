@@ -91,17 +91,13 @@ describe("detectLoginPrompt — DOM probes", () => {
   });
 
   it("does NOT trigger on a hidden (display:none) password input", async () => {
-    const page = await fixture(
-      '<form><input type="password" style="display:none" /></form>',
-    );
+    const page = await fixture('<form><input type="password" style="display:none" /></form>');
     const r = await detectLoginPrompt(page);
     expect(r.detected).toBe(false);
   });
 
   it("does NOT trigger on a visibility:hidden password input", async () => {
-    const page = await fixture(
-      '<form><input type="password" style="visibility:hidden" /></form>',
-    );
+    const page = await fixture('<form><input type="password" style="visibility:hidden" /></form>');
     const r = await detectLoginPrompt(page);
     expect(r.detected).toBe(false);
   });
@@ -119,9 +115,7 @@ describe("detectLoginPrompt — DOM probes", () => {
   });
 
   it("triggers on passkey-text body content", async () => {
-    const page = await fixture(
-      "<p>To continue, please use your passkey to sign in.</p>",
-    );
+    const page = await fixture("<p>To continue, please use your passkey to sign in.</p>");
     const r = await detectLoginPrompt(page);
     expect(r.detected).toBe(true);
     if (r.detected) expect(r.reason).toContain("Passkey");

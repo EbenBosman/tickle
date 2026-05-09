@@ -201,8 +201,10 @@ export function summaryOf(block: Block): string {
       return block.url || "(no url)";
     case "goal":
       return block.description.slice(0, 200) || "(empty goal)";
-    case "pause":
-      return block.message?.slice(0, 200) ?? "Pause for human";
+    case "pause": {
+      const trimmed = block.message?.trim() ?? "";
+      return trimmed.length > 0 ? trimmed.slice(0, 200) : "Pause for human";
+    }
     case "click": {
       const role = block.role && block.role !== "any" ? `${block.role}: ` : "";
       return `Click ${role}${block.target || "(no target)"}`;

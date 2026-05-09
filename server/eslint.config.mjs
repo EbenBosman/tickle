@@ -71,7 +71,7 @@ export default tseslint.config(
   {
     // Tests can be looser. Mocks and fixtures often use values typed as
     // `unknown`/`never`; assertion shapes return any from Vitest matchers.
-    files: ["src/__tests__/**/*.ts"],
+    files: ["src/**/__tests__/**/*.ts"],
     rules: {
       "@typescript-eslint/no-explicit-any": "warn",
       "@typescript-eslint/no-unsafe-assignment": "off",
