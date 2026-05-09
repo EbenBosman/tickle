@@ -110,7 +110,10 @@ export function useRunStream(
   runId: number,
   callbacks: {
     onStats?: (sample: RunStatsSample) => void;
-    onBlockStatus?: (info: { blockId: string | null; statusMap: Record<string, BlockStatus> }) => void;
+    onBlockStatus?: (info: {
+      blockId: string | null;
+      statusMap: Record<string, BlockStatus>;
+    }) => void;
   } = {},
 ): RunStreamState {
   const [entries, setEntries] = useState<Entry[]>([]);

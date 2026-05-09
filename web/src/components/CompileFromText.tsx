@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { api } from "../api.ts";
 import { type Block } from "../blocks.ts";
+import { flagBlock, flagBlocks } from "../state/compileFlags.ts";
 
 export function CompileFromText({
   disabled,
@@ -112,18 +113,44 @@ export function CompileFromText({
 
       {proposed && (
         <div className="space-y-2">
+          {(() => {
+            const flags = flagBlocks(proposed);
+            if (flags.length === 0) return null;
+            return (
+              <div className="rounded border border-amber-500/50 bg-amber-500/10 px-2 py-1.5 text-xs text-amber-200">
+                <div className="font-semibold">
+                  Review carefully — {flags.length} block{flags.length === 1 ? "" : "s"} flagged
+                </div>
+                <div className="mt-0.5 text-[11px] text-amber-200/80">
+                  This compile produced steps that touch off-host URLs or credential-shaped
+                  fields. Confirm each is intended before applying.
+                </div>
+              </div>
+            );
+          })()}
           <div className="rounded border border-violet-500/30 bg-zinc-950/50 p-2">
             <div className="mb-1 text-[10px] uppercase tracking-wider text-violet-300">
               Preview · {proposed.length} block{proposed.length === 1 ? "" : "s"}
             </div>
             <ol className="space-y-0.5 text-xs text-zinc-200">
-              {proposed.map((b, i) => (
-                <li key={b.id} className="flex gap-2">
-                  <span className="text-zinc-500">{i + 1}.</span>
-                  <span className="font-semibold text-violet-300">{b.kind}</span>
-                  <span className="text-zinc-400 truncate">{shortSummary(b)}</span>
-                </li>
-              ))}
+              {proposed.map((b, i) => {
+                const flag = flagBlock(b);
+                return (
+                  <li key={b.id} className="flex gap-2">
+                    <span className="text-zinc-500">{i + 1}.</span>
+                    <span className="font-semibold text-violet-300">{b.kind}</span>
+                    <span className="truncate text-zinc-400">{shortSummary(b)}</span>
+                    {flag && (
+                      <span
+                        className="shrink-0 rounded border border-amber-500/40 bg-amber-500/10 px-1.5 text-[10px] font-semibold text-amber-200"
+                        title={flag.reason}
+                      >
+                        {flag.reason}
+                      </span>
+                    )}
+                  </li>
+                );
+              })}
             </ol>
           </div>
           <div className="flex justify-end gap-2">

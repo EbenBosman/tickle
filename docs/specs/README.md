@@ -75,7 +75,6 @@ Issues surfaced while specifying the modules. Each is captured in detail in the 
 
 ### Likely bugs
 
-- 🟠 **`CompileFromText` preview lacks danger affordances.** The "human-review-before-execute" injection defence per `http-compile.md` §6 is load-bearing, but the preview is a plain `<ol>` of `kind` + summary — no off-host `navigate` banner, no credential-pattern flag. Makes review a rubber-stamp.
 - 🟡 **No SSE auto-reconnect.** `EventSource.onerror` closes; no `Last-Event-ID`. Reconnect after network blip would either fail or duplicate entries (no idempotent identity).
 - 🟡 **`alert()`/`confirm()`** for action errors throughout the UI.
 - 🟡 **`RunView` entries unbounded** — at hundreds of events per run, no virtualisation. Memory grows linearly.
@@ -137,3 +136,4 @@ Items fixed since the original Phase 2 pass. Each links to its regression test.
 - **`goal.max_steps` in schema but no UI input.** Goal blocks now show an optional "Max LLM turns" number input (default 12, range 1–100) wired to `block.max_steps`.
 - **`web/src/blocks.ts::newBlock` non-UUID fallback.** Replaced with an RFC 4122 v4-shaped Math.random fallback so ids match the server's UUID shape regardless of `crypto.randomUUID` availability. Regression test asserts every generated id matches the v4 regex.
 - **EventSource trapped in `RunView.tsx`.** Extracted to `web/src/state/useRunStream.ts`. The hook owns the EventSource lifecycle, the bootstrap `getRun` fetch, the SSE event parsing, and the entry-list / paused / pageState / memory / startedAt / finishedAt state. Callbacks (onStats, onBlockStatus) flow through a ref so they don't force the effect to re-run. RunView now consumes the hook and stays focused on presentation; `renderBody` is exported as `renderStepBody` from the hook module.
+- **`CompileFromText` preview lacks danger affordances.** New `web/src/state/compileFlags.ts` exposes pure detectors: `isExternalUrl` flags off-localhost `navigate` blocks; `looksLikeCredential` flags `fill` blocks whose target description or value matches credential / SSN / credit-card patterns. The preview now shows a "Review carefully — N blocks flagged" banner when any flag fires, and per-block badges with the reason (tooltip + visible). Regression: `web/src/__tests__/compileFlags.test.ts` covers local-vs-external URL classification, credential keyword set, card / SSN shape, and the per-block + list-summary helpers (40+ cases).
