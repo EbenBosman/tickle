@@ -31,11 +31,12 @@ export function envPath(envVar: string, defaultRel: string): string {
 }
 
 /**
- * Default for SHOTS_DIR is "screenshots" (not "data/screenshots") to match
- * the existing on-disk layout and the path used by routes/runs.ts and
- * paths.ts. Aligning those references is a separate commit.
+ * Defaults match the on-disk layout under `server/data/`. Existing
+ * deployments with screenshots under `server/screenshots/` should set
+ * `TICKLE_SHOTS_DIR=screenshots` to keep their old location, or move the
+ * directory once.
  */
 export const PROFILE_DIR = envPath("TICKLE_PROFILE_DIR", "data/profile");
-export const SHOTS_DIR = envPath("TICKLE_SHOTS_DIR", "screenshots");
+export const SHOTS_DIR = envPath("TICKLE_SHOTS_DIR", "data/screenshots");
 
 export const __SERVER_DIR_FOR_TEST = SERVER_DIR;

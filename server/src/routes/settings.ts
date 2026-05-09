@@ -1,7 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { db, getSetting, setSetting, listLessons } from "../db.ts";
-
-const VALID_MODELS = ["claude-haiku-4-5-20251001", "claude-sonnet-4-6", "claude-opus-4-7"];
+import { isValidModel } from "../domain/models.ts";
 
 export async function settingsRoutes(app: FastifyInstance) {
   app.get("/api/settings", async () => {
@@ -25,7 +24,7 @@ export async function settingsRoutes(app: FastifyInstance) {
       setSetting("rescue_enabled", String(body.rescue_enabled));
     }
     if (typeof body.rescue_model === "string") {
-      if (!VALID_MODELS.includes(body.rescue_model)) {
+      if (!isValidModel(body.rescue_model)) {
         return reply.code(400).send({ error: `unknown model: ${body.rescue_model}` });
       }
       setSetting("rescue_model", body.rescue_model);

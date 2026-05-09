@@ -1,6 +1,11 @@
 import { useEffect, useState } from "react";
 import { api, type Settings, type Lesson } from "../api.ts";
 
+// keep-in-sync: server/src/domain/models.ts. The `value` column must match
+// the server's VALID_MODELS allowlist exactly; the rich `label`/`cost`
+// metadata stays here because it's presentation-only. A run-time fetch
+// would also work but is overkill for a 3-element list that changes
+// rarely.
 const MODELS: { value: string; label: string; cost: string }[] = [
   { value: "claude-haiku-4-5-20251001", label: "Haiku 4.5", cost: "~$0.02–0.08 / failed block" },
   { value: "claude-sonnet-4-6", label: "Sonnet 4.6", cost: "~$0.10–0.30 / failed block" },

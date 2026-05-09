@@ -39,12 +39,9 @@ describe("storage paths — defaults", () => {
     expect(PROFILE_DIR).toBe(resolve(SERVER_DIR, "data", "profile"));
   });
 
-  it("anchors SHOTS_DIR to <server>/screenshots", async () => {
-    // Default kept as 'screenshots' (not 'data/screenshots') for now to
-    // match the existing on-disk layout and other modules that still
-    // reference it; alignment is a separate commit.
+  it("anchors SHOTS_DIR to <server>/data/screenshots", async () => {
     const { SHOTS_DIR } = await loadStorage();
-    expect(SHOTS_DIR).toBe(resolve(SERVER_DIR, "screenshots"));
+    expect(SHOTS_DIR).toBe(resolve(SERVER_DIR, "data", "screenshots"));
   });
 
   it("ignores process.cwd() when resolving the defaults", async () => {
@@ -101,6 +98,6 @@ describe("storage paths — TICKLE_SHOTS_DIR override", () => {
   it("falls back to the default when the env var is empty", async () => {
     process.env.TICKLE_SHOTS_DIR = "";
     const { SHOTS_DIR } = await loadStorage();
-    expect(SHOTS_DIR).toBe(resolve(SERVER_DIR, "screenshots"));
+    expect(SHOTS_DIR).toBe(resolve(SERVER_DIR, "data", "screenshots"));
   });
 });

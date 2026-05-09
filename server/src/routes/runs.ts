@@ -6,8 +6,9 @@ import { subscribe, publish, endTopic } from "../bus.ts";
 import { requestCancel } from "../cancel.ts";
 import { pause, resume, isPaused, getPauseInfo } from "../pause.ts";
 import { trace } from "../log.ts";
-import { safeResolveScreenshot } from "../paths.ts";
+import { safeResolveScreenshot, SCREENSHOTS_DIR } from "../paths.ts";
 import { errorMessageFromThrow } from "../errors.ts";
+import { join } from "node:path";
 
 function deleteRunArtifacts(runId: number): number {
   const rows = db
@@ -15,7 +16,7 @@ function deleteRunArtifacts(runId: number): number {
     .all(runId) as { screenshot_path: string }[];
   let removed = 0;
   for (const r of rows) {
-    const p = `screenshots/${r.screenshot_path}`;
+    const p = join(SCREENSHOTS_DIR, r.screenshot_path);
     if (existsSync(p)) {
       try {
         unlinkSync(p);

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { StatusPill } from "./StatusPill.tsx";
 import { api } from "../api.ts";
+import { parseSqliteUtc, formatDuration } from "../state/parseSqliteUtc.ts";
 
 export type BlockStatus = "pending" | "running" | "done" | "failed" | "skipped";
 
@@ -577,28 +578,8 @@ function Label({ children }: { children: ReactNode }) {
   return <div className="text-[10px] uppercase tracking-wider text-zinc-500">{children}</div>;
 }
 
-/**
- * SQLite stores datetime('now') as "YYYY-MM-DD HH:MM:SS" in UTC, with no zone suffix.
- * JS Date.parse on that treats it as local time — wrong by hours. Force UTC.
- */
-function parseSqliteUtc(s: string | null): number | null {
-  if (!s) return null;
-  const ms = Date.parse(
-    s.includes("T") ? (s.endsWith("Z") ? s : s + "Z") : s.replace(" ", "T") + "Z",
-  );
-  return Number.isFinite(ms) ? ms : null;
-}
-
-function formatDuration(ms: number): string {
-  if (ms < 0) ms = 0;
-  const totalSec = Math.floor(ms / 1000);
-  const h = Math.floor(totalSec / 3600);
-  const m = Math.floor((totalSec % 3600) / 60);
-  const s = totalSec % 60;
-  if (h > 0) return `${h}h ${m}m ${s}s`;
-  if (m > 0) return `${m}m ${String(s).padStart(2, "0")}s`;
-  return `${s}s`;
-}
+// parseSqliteUtc + formatDuration moved to web/src/state/parseSqliteUtc.ts —
+// re-imported below alongside other top-level imports.
 
 function computeElapsed(
   startedAt: string | null,

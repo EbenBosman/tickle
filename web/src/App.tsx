@@ -5,6 +5,7 @@ import { TaskEditor } from "./components/TaskEditor.tsx";
 import { RunView, type RunStatsSample, type BlockStatus } from "./components/RunView.tsx";
 import { StatusPill } from "./components/StatusPill.tsx";
 import { SettingsPage } from "./components/SettingsPage.tsx";
+import { runDuration } from "./state/parseSqliteUtc.ts";
 
 // Fallback if /api/health doesn't return context_window for some reason.
 const CONTEXT_WINDOW_FALLBACK = 32_768;
@@ -272,18 +273,7 @@ function Empty({ title, hint }: { title: string; hint: string }) {
   );
 }
 
-function runDuration(startedAt: string, finishedAt: string | null): string {
-  const parse = (s: string): number =>
-    Date.parse(s.includes("T") ? (s.endsWith("Z") ? s : s + "Z") : s.replace(" ", "T") + "Z");
-  const start = parse(startedAt);
-  const end = finishedAt ? parse(finishedAt) : Date.now();
-  if (!Number.isFinite(start) || !Number.isFinite(end)) return "";
-  const ms = Math.max(0, end - start);
-  const totalSec = Math.floor(ms / 1000);
-  const m = Math.floor(totalSec / 60);
-  const s = totalSec % 60;
-  return m > 0 ? `${m}m ${String(s).padStart(2, "0")}s` : `${s}s`;
-}
+// runDuration moved to web/src/state/parseSqliteUtc.ts
 
 function RecentRuns({ taskId, onOpen }: { taskId: number; onOpen: (id: number) => void }) {
   const [runs, setRuns] = useState<

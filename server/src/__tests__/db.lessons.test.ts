@@ -34,9 +34,9 @@ describe("addLesson — happy path writes both tables", () => {
     dbm.addLesson(null, null, "alpha", null);
     dbm.addLesson(null, null, "beta", null);
     const ids = dbm.db.prepare("SELECT id FROM lessons ORDER BY id").all() as { id: number }[];
-    const ftsRowids = dbm.db
-      .prepare("SELECT rowid FROM lessons_fts ORDER BY rowid")
-      .all() as { rowid: number }[];
+    const ftsRowids = dbm.db.prepare("SELECT rowid FROM lessons_fts ORDER BY rowid").all() as {
+      rowid: number;
+    }[];
     expect(ftsRowids.map((r) => r.rowid)).toEqual(ids.map((i) => i.id));
   });
 });

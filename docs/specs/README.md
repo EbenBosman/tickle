@@ -87,13 +87,10 @@ Issues surfaced while specifying the modules. Each is captured in detail in the 
 
 ### Misplaced code (resolves with refactor)
 
-- 🟠 **`chatWithRetry` lives in `agent.ts:31-74`** — pure infrastructure trapped in the orchestration layer. `_LAYERS.md` already targets `infrastructure/llm/chatWithRetry.ts`.
 - 🟠 **`EndEvent` shape duplicated** between `bus.ts` and `routes/runs.ts` — hoist to `domain/run.ts`.
 - 🟠 **Frontend domain duplication** — `web/src/blocks.ts` mirrors `server/src/blocks.ts` (types, `newBlock`, defaults). Post-refactor: shared `domain/`.
 - 🟠 **`SseEvent` union duplicated four ways** — emitted by `agent.ts`, carried by `bus.ts`, persisted by `db.ts` (`Step["kind"]`), consumed by `RunView.tsx`. All four lists differ from each other.
-- 🟠 **`parseSqliteUtc` duplicated** — `RunView.tsx:570` and `App.tsx::runDuration`. The CLAUDE.md "canonical normaliser" doesn't actually have a canonical location.
-- 🟠 **`VALID_MODELS` duplicated** — `routes/settings.ts` and `web/src/components/SettingsPage.tsx`.
-- 🟠 **Two diverging text walkers** in `tools.ts` (already listed under bugs) — same root cause as the duplications above.
+- 🟡 **`VALID_MODELS` server/web split** — server's `domain/models.ts` is now the source of truth; web's `SettingsPage.tsx::MODELS` carries the richer label/cost metadata for display and is marked `keep-in-sync`. A cross-workspace shared `domain/` would unify them; deferred until tsconfig project references or a `shared/` workspace land.
 - 🟠 **EventSource lives in `RunView.tsx`, not in a hook.** `_LAYERS.md` calls for `state/useRunStream.ts`.
 
 ### Process / migration
@@ -139,3 +136,7 @@ Items fixed since the original Phase 2 pass. Each links to its regression test.
 - **`bus.ts` replay/subscribe race (route-level fix).** `routes/runs.ts /stream` now subscribes BEFORE the DB replay read and buffers live events. After replay, a tail-read of `steps WHERE idx > lastReplayedIdx` catches anything persisted during the race window; the buffer is then drained for live-only kinds (`paused`/`resumed`) and discarded for persistable kinds (already covered by tail). Persist-runs-before-emit ordering inside `runAgent` keeps the invariant that any bus event of a persistable kind is already in the DB by the time a subscriber sees it.
 - **`runClaudeRescue` step-counter race.** Replaced the inline `MAX(idx)+1` SELECT + INSERT with `ctx.persist("messages_export", payload)`, which uses the same in-memory `stepIdx` as the main run loop. No more SELECT/INSERT race window with concurrent emits.
 - **`page_state` / `stats` events not persisted.** Both kinds are now added to `Step["kind"]` and auto-persisted via a wrapper around the `emit` callback in `runAgent`. SSE clients reconnecting via replay see the full event history, not just the persistable subset minus these two. CLAUDE.md Storage section updated to reflect the new `kind` enumeration.
+- **`chatWithRetry` trapped in `agent.ts`.** Extracted to `server/src/infrastructure/llm/chatWithRetry.ts` along with `RETRY_BACKOFFS_MS`, `isTransientLLMError`, and the `ChatRequest` type. `agent.ts` imports it. Regression: `server/src/__tests__/chatWithRetry.test.ts` covers retry-on-transient, no-retry-on-fatal, exhausted-backoffs, pre-attempt cancel, and mid-flight cancel.
+- **`VALID_MODELS` server-side duplication.** Lifted to `server/src/domain/models.ts` (source of truth) with a typed `isValidModel` narrowing guard. `routes/settings.ts` imports the guard. The web `SettingsPage` keeps a richer `MODELS` array (with label + cost) for presentation, marked `keep-in-sync`. Regression: `server/src/__tests__/models.test.ts`.
+- **`parseSqliteUtc` duplicated in web.** Extracted to `web/src/state/parseSqliteUtc.ts`, with sibling `formatDuration` and `runDuration`. `RunView.tsx` and `App.tsx::runDuration` both consume it. Regression: `web/src/__tests__/parseSqliteUtc.test.ts` covers null inputs, both timestamp shapes round-tripping to the same epoch, the local-time mistake, and `runDuration` against fake-timer `Date.now()`.
+- **`SHOTS_DIR` / `paths.ts::SCREENSHOTS_DIR` / `routes/runs.ts` literal `screenshots/` divergence.** Aligned: `paths/storage.ts::SHOTS_DIR` defaults to `<server>/data/screenshots`; `paths.ts::SCREENSHOTS_DIR` re-exports it; `routes/runs.ts::deleteRunArtifacts` uses `path.join(SCREENSHOTS_DIR, ...)`. Existing deployments with the old `server/screenshots/` location can keep it via `TICKLE_SHOTS_DIR=screenshots`. Regression: `server/src/__tests__/browser.paths.test.ts`.

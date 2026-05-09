@@ -1,15 +1,14 @@
 import { resolve, sep } from "node:path";
+import { SHOTS_DIR } from "./paths/storage.ts";
 
 /**
  * Filesystem-resolution helpers shared between routes.
  *
- * Note on cwd-relativity: `SCREENSHOTS_DIR` is "screenshots" (relative).
- * It resolves against `process.cwd()` at call time, which today means
- * the server is launched from `server/`. The Phase 4-5 refactor will
- * anchor this to the server module location (per docs/specs/server/
- * browser.md drift note); until then, callers must launch from `server/`.
+ * SCREENSHOTS_DIR is anchored via `paths/storage.ts::SHOTS_DIR` (which
+ * uses `import.meta.url` to point at `<server>/data/screenshots` regardless
+ * of the launch cwd, with `TICKLE_SHOTS_DIR` env override).
  */
-export const SCREENSHOTS_DIR = "screenshots";
+export const SCREENSHOTS_DIR = SHOTS_DIR;
 
 /**
  * Resolve a path under `SCREENSHOTS_DIR` if and only if:

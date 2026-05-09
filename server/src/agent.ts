@@ -7,6 +7,7 @@ import {
   type Message,
   type ChatResponse,
 } from "./llm.ts";
+import { chatWithRetry } from "./infrastructure/llm/chatWithRetry.ts";
 import { type BlockOutcome, mergeRescuedOutcome } from "./blockOutcome.ts";
 import { Session } from "./browser.ts";
 import { toolDefs, executeTool, type ToolResult } from "./tools.ts";
@@ -32,52 +33,6 @@ import { asString } from "./coerce.ts";
 const KEEP_RECENT_IMAGES = Number(process.env.KEEP_RECENT_IMAGES ?? 3);
 const MAX_STEPS_PER_GOAL = Number(process.env.MAX_AGENT_STEPS ?? 25);
 const STALL_REPEAT_THRESHOLD = 3;
-const RETRY_BACKOFFS_MS = [1500, 4000];
-
-function isTransientLLMError(msg: string): boolean {
-  return /fetch failed|ECONN|ETIMEDOUT|EAI_AGAIN|socket hang up|network|aborted by/i.test(msg);
-}
-
-type ChatRequest = {
-  model: string;
-  messages: Message[];
-  tools?: unknown[];
-  temperature?: number;
-  think?: boolean;
-};
-
-async function chatWithRetry(
-  client: LlmClient,
-  request: ChatRequest,
-  isCancelled: () => boolean,
-  setActiveController: (c: AbortController | null) => void,
-  onRetry: (attempt: number, error: string, backoffMs: number) => void,
-): Promise<ChatResponse> {
-  let lastErr: unknown = null;
-  for (let attempt = 0; attempt <= RETRY_BACKOFFS_MS.length; attempt++) {
-    if (isCancelled()) {
-      throw lastErr instanceof Error ? lastErr : new Error("cancelled before chat attempt");
-    }
-    const controller = new AbortController();
-    setActiveController(controller);
-    try {
-      const response = await chatOnce(client, { ...request, signal: controller.signal });
-      setActiveController(null);
-      return response;
-    } catch (err) {
-      setActiveController(null);
-      lastErr = err;
-      const msg = (err as Error).message ?? String(err);
-      if (isCancelled() || !isTransientLLMError(msg) || attempt === RETRY_BACKOFFS_MS.length) {
-        throw err;
-      }
-      const backoff = RETRY_BACKOFFS_MS[attempt];
-      onRetry(attempt + 1, msg, backoff);
-      await new Promise((resolve) => setTimeout(resolve, backoff));
-    }
-  }
-  throw lastErr;
-}
 
 function pruneOldImages(messages: Message[], keep: number): Message[] {
   const indicesWithImages: number[] = [];
@@ -771,7 +726,7 @@ async function runAiSubGoal(
       if (ctx.isCancelled()) return { status: "cancelled" };
 
       const name = call.function?.name ?? "";
-      const args = (call.function?.arguments ?? {});
+      const args = call.function?.arguments ?? {};
 
       // Stall detection
       const argsKey = JSON.stringify(args);
@@ -1136,7 +1091,7 @@ async function runStatelessStep(
   for (const call of calls) {
     if (ctx.isCancelled()) return { success: false, note: "cancelled" };
     const name = call.function?.name ?? "";
-    const args = (call.function?.arguments ?? {});
+    const args = call.function?.arguments ?? {};
     ctx.emit({ kind: "tool_call", name, args, block_id: opts.blockId });
     ctx.persist("tool_call", { name, args, block_id: opts.blockId });
     trace("tool.call", { runId: ctx.runId, blockId: opts.blockId, name, args });
