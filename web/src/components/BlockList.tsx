@@ -102,6 +102,8 @@ export function BlockList({
               status={status}
               isRunning={isRunning}
               isLocked={isLocked}
+              statusMap={statusMap}
+              runningBlockId={runningBlockId}
               onChange={(patch) => update(block.id, patch)}
               onRemove={() => remove(block.id)}
               onAddBelow={(kind) => insertAt(idx + 1, newBlock(kind))}
@@ -141,6 +143,8 @@ function BlockCard({
   status,
   isRunning,
   isLocked,
+  statusMap,
+  runningBlockId,
   onChange,
   onRemove,
   onAddBelow,
@@ -152,6 +156,8 @@ function BlockCard({
   status?: BlockStatusMap[string];
   isRunning: boolean;
   isLocked: boolean;
+  statusMap?: BlockStatusMap;
+  runningBlockId?: string | null;
   onChange: (patch: Partial<Block>) => void;
   onRemove: () => void;
   onAddBelow: (kind: BlockKind) => void;
@@ -213,7 +219,13 @@ function BlockCard({
       </div>
 
       <div className="px-3 py-2">
-        <BlockBody block={block} onChange={onChange} disabled={isLocked} />
+        <BlockBody
+          block={block}
+          onChange={onChange}
+          disabled={isLocked}
+          statusMap={statusMap}
+          runningBlockId={runningBlockId}
+        />
       </div>
 
       <div className="flex items-center justify-end border-t border-zinc-800/40 px-2 py-1">
@@ -227,10 +239,14 @@ function BlockBody({
   block,
   onChange,
   disabled,
+  statusMap,
+  runningBlockId,
 }: {
   block: Block;
   onChange: (patch: Partial<Block>) => void;
   disabled: boolean;
+  statusMap?: BlockStatusMap;
+  runningBlockId?: string | null;
 }) {
   const inputCls =
     "w-full rounded border border-zinc-800 bg-zinc-900/60 px-2 py-1 text-sm text-zinc-100 focus:border-zinc-600 focus:outline-none disabled:opacity-50";
@@ -250,15 +266,37 @@ function BlockBody({
       );
     case "goal":
       return (
-        <Field label="Goal description">
-          <textarea
-            className={`${inputCls} min-h-[60px] font-mono leading-relaxed`}
-            placeholder="What should the AI accomplish in this step?"
-            value={block.description}
-            disabled={disabled}
-            onChange={(e) => onChange({ description: e.target.value })}
-          />
-        </Field>
+        <div className="space-y-2">
+          <Field label="Goal description">
+            <textarea
+              className={`${inputCls} min-h-[60px] font-mono leading-relaxed`}
+              placeholder="What should the AI accomplish in this step?"
+              value={block.description}
+              disabled={disabled}
+              onChange={(e) => onChange({ description: e.target.value })}
+            />
+          </Field>
+          <Field label="Max LLM turns (optional, default 12)">
+            <input
+              className={`${inputCls} max-w-[160px]`}
+              type="number"
+              min={1}
+              max={100}
+              placeholder="12"
+              value={block.max_steps ?? ""}
+              disabled={disabled}
+              onChange={(e) => {
+                const v = e.target.value;
+                if (v === "") {
+                  onChange({ max_steps: undefined });
+                } else {
+                  const n = Number(v);
+                  if (Number.isFinite(n) && n > 0) onChange({ max_steps: Math.floor(n) });
+                }
+              }}
+            />
+          </Field>
+        </div>
       );
     case "pause":
       return (
@@ -445,10 +483,25 @@ function BlockBody({
             <BlockList
               blocks={block.body}
               onChange={(body) => onChange({ body })}
+              statusMap={statusMap}
+              runningBlockId={runningBlockId}
             />
           </div>
         </div>
       );
+    default: {
+      // Unrecognised kind — render a placeholder rather than nothing.
+      // This catches the case where a future schema adds a kind the
+      // current frontend doesn't know about; without the default branch
+      // the body silently disappears and BlockCard's meta.color access
+      // can throw. blockMeta() also returns a safe fallback now.
+      const k = (block as { kind: string }).kind;
+      return (
+        <div className="text-xs text-zinc-500">
+          Unsupported block kind: <code>{k}</code>. Update the app or remove this block.
+        </div>
+      );
+    }
   }
 }
 

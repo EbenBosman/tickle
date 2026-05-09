@@ -134,8 +134,21 @@ const KIND_META: Record<
   },
 };
 
-export function blockMeta(kind: BlockKind) {
-  return KIND_META[kind];
+/** Fallback shown when a block has an unrecognised `kind` (e.g. an older
+ * persisted task from a future schema). Keeps the UI from crashing on
+ * `KIND_META[unknown].color` access. */
+const UNKNOWN_KIND_META = {
+  label: "Unknown",
+  icon: "?",
+  color: "zinc",
+  description: "Unsupported block kind. Update the app or remove this block.",
+} as const;
+
+/** Accepts a runtime string so callers can pass values from older
+ * persisted tasks whose `kind` may not be in the current `BlockKind`
+ * union. Returns a generic fallback record for unknown kinds. */
+export function blockMeta(kind: string) {
+  return KIND_META[kind as BlockKind] ?? UNKNOWN_KIND_META;
 }
 
 export const BLOCK_KINDS: BlockKind[] = [
@@ -168,7 +181,24 @@ function uuid(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
     return crypto.randomUUID();
   }
-  return Math.random().toString(36).slice(2) + Date.now().toString(36);
+  // RFC 4122 v4-shaped fallback for the rare case `crypto.randomUUID` is
+  // missing (older browsers, non-secure contexts). Uses Math.random
+  // because clashes are vanishingly unlikely on a single-user local app
+  // and we just need the SHAPE to match the server-side UUID so equality
+  // checks across run boundaries still work.
+  const hex = (size: number, len: number) =>
+    Math.floor(Math.random() * size)
+      .toString(16)
+      .padStart(len, "0");
+  // 8-4-4-4-12 hex digits, with the version nibble forced to 4 and the
+  // variant nibble in [8,b].
+  const variant = (8 + Math.floor(Math.random() * 4)).toString(16);
+  return (
+    `${hex(0x100000000, 8)}-${hex(0x10000, 4)}-` +
+    `4${hex(0x1000, 3)}-` +
+    `${variant}${hex(0x1000, 3)}-` +
+    `${hex(0x100000000, 8)}${hex(0x10000, 4)}`
+  );
 }
 
 export function newBlock(kind: BlockKind): Block {

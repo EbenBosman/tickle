@@ -76,12 +76,8 @@ Issues surfaced while specifying the modules. Each is captured in detail in the 
 ### Likely bugs
 
 - 🟠 **`CompileFromText` preview lacks danger affordances.** The "human-review-before-execute" injection defence per `http-compile.md` §6 is load-bearing, but the preview is a plain `<ol>` of `kind` + summary — no off-host `navigate` banner, no credential-pattern flag. Makes review a rubber-stamp.
-- 🟠 **`statusMap`/`runningBlockId` not propagated into `for_each.body`** — inner blocks never show running/done state during a run.
-- 🟠 **`goal.max_steps`** in the schema but no UI input — silent server-only field.
-- 🟠 **`BlockBody` switch has no `default`** — unknown `kind` renders empty and likely throws on `meta.color` lookup.
 - 🟡 **No SSE auto-reconnect.** `EventSource.onerror` closes; no `Last-Event-ID`. Reconnect after network blip would either fail or duplicate entries (no idempotent identity).
 - 🟡 **`alert()`/`confirm()`** for action errors throughout the UI.
-- 🟡 **`web/src/blocks.ts::newBlock`** falls back to non-UUID IDs when `crypto.randomUUID` unavailable. Server validation tolerates it; equality checks across run boundaries don't.
 - 🟡 **`RunView` entries unbounded** — at hundreds of events per run, no virtualisation. Memory grows linearly.
 - 🟡 **Drag-drop cannot cross `for_each` boundaries** — separate `dragId` state per recursion level.
 
@@ -137,3 +133,7 @@ Items fixed since the original Phase 2 pass. Each links to its regression test.
 - **`SHOTS_DIR` / `paths.ts::SCREENSHOTS_DIR` / `routes/runs.ts` literal `screenshots/` divergence.** Aligned: `paths/storage.ts::SHOTS_DIR` defaults to `<server>/data/screenshots`; `paths.ts::SCREENSHOTS_DIR` re-exports it; `routes/runs.ts::deleteRunArtifacts` uses `path.join(SCREENSHOTS_DIR, ...)`. Existing deployments with the old `server/screenshots/` location can keep it via `TICKLE_SHOTS_DIR=screenshots`. Regression: `server/src/__tests__/browser.paths.test.ts`.
 - **Server-side `SseEvent`-related dups.** Hoisted to `server/src/domain/run.ts`: `EndEvent` (was inline in `bus.ts` and `routes/runs.ts`), `STEP_KINDS` array + `StepKind` union (was inline in `db.ts` and `agent.ts`), `LIVE_ONLY_KINDS` (new — names the kinds emitted but not persisted). `bus.ts` Subscriber, `routes/runs.ts` end-event construction, and `agent.ts` persist signature now consume these. Web side stays separate pending cross-workspace imports.
 - **One-shot ALTER migration won't scale.** New migration framework at `server/src/migrations/` with a `schema_versions` table. Each migration is `{ id, up }`, runs in its own BEGIN/COMMIT, and is recorded by id; re-running on an already-migrated DB is a no-op. Initial schema (tasks/runs/steps/settings/lessons + `runs.status` triggers) is migration `001-initial-schema`, idempotent for existing DBs (CREATE TABLE IF NOT EXISTS throughout). Regression: `server/src/__tests__/migrations.test.ts` covers fresh-DB application, idempotency across re-runs, BEGIN/COMMIT rollback semantics on failure, and the runs.status trigger surviving the migration boundary.
+- **`BlockBody` switch has no default.** Now ends in a `default` branch that renders a "Unsupported block kind" placeholder. `blockMeta()` falls back to a generic record (label "Unknown", color "zinc") so `meta.color` can never throw on a future schema kind. Regression: `web/src/__tests__/blocks.test.ts`.
+- **`statusMap` / `runningBlockId` not propagated into `for_each.body`.** The recursive `<BlockList>` in `BlockBody`'s `for_each` case now receives both props, so inner blocks show running/done state during a run.
+- **`goal.max_steps` in schema but no UI input.** Goal blocks now show an optional "Max LLM turns" number input (default 12, range 1–100) wired to `block.max_steps`.
+- **`web/src/blocks.ts::newBlock` non-UUID fallback.** Replaced with an RFC 4122 v4-shaped Math.random fallback so ids match the server's UUID shape regardless of `crypto.randomUUID` availability. Regression test asserts every generated id matches the v4 regex.

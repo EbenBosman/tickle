@@ -78,6 +78,27 @@ describe("blockMeta — UI metadata", () => {
       expect(m.description).toBeTruthy();
     }
   });
+
+  it("returns a fallback shape (no throw) for an unknown kind", () => {
+    // Future-schema scenario: a persisted task with a kind the current
+    // frontend doesn't know about. blockMeta must NOT throw on the
+    // missing record.
+    const m = blockMeta("future_kind_we_do_not_know");
+    expect(m.label).toBe("Unknown");
+    expect(m.color).toBe("zinc");
+    expect(m.icon).toBeTruthy();
+  });
+});
+
+describe("newBlock — id format", () => {
+  it("produces RFC 4122 v4-shaped ids", () => {
+    // Either crypto.randomUUID (real v4) or our fallback — both should
+    // match the v4 shape: 8-4-4-4-12 hex with version 4 and variant in [8,b].
+    const v4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    for (let i = 0; i < 10; i++) {
+      expect(newBlock("navigate").id).toMatch(v4);
+    }
+  });
 });
 
 describe("BLOCK_KINDS — UI ordering", () => {
