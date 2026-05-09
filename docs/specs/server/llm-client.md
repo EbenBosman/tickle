@@ -16,21 +16,21 @@ The agent talks to whatever model the user has running locally — LM Studio, Ol
 
 ### Exports
 
-| Symbol               | Kind     | Signature / shape                                                                                                                      | Stability                                                                   |
-| -------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
-| `LLM_BASE_URL`       | const    | `string` — defaults to `"http://127.0.0.1:1234/v1"` (LM Studio)                                                                        | stable                                                                      |
-| `MODEL`              | const    | `string` — defaults to `"qwen3.6-27b-uncensored-hauhaucs-balanced"`; honours `LLM_MODEL` then `OLLAMA_MODEL`                           | stable                                                                      |
-| `CONTEXT_WINDOW`     | const    | `number` — UI-only gauge value; defaults to `32768`                                                                                    | stable                                                                      |
-| `LlmClient`          | type     | `{ provider: "openai"; client: OpenAI } \| { provider: "anthropic"; client: Anthropic }`                                               | stable                                                                      |
-| `Message`            | type     | `{ role: "system"\|"user"\|"assistant"\|"tool"; content: string; images?: string[]; tool_calls?: ToolCall[] }`                         | stable                                                                      |
-| `ToolCall`           | type     | `{ function?: { name?: string; arguments?: Record<string, unknown> } }`                                                                | stable                                                                      |
-| `ChatOptions`        | type     | `{ model; messages; tools?; temperature?; think?; signal? }`                                                                           | stable                                                                      |
-| `ChatResponse`       | type     | `{ message: { content; tool_calls }; usage: { prompt_tokens; completion_tokens }; duration_ms }`                                       | stable                                                                      |
-| `newLlmClient`       | function | `() => LlmClient` — chooses provider from `LLM_PROVIDER` env (`"anthropic"` ⇒ Anthropic, else OpenAI-compat)                           | stable                                                                      |
-| `newAnthropicClient` | function | `() => LlmClient` — always Anthropic; for the rescue path, independent of primary provider. Model is per-call via `ChatOptions.model`. | stable                                                                      |
-| `chatOnce`           | function | `(client: LlmClient, opts: ChatOptions) => Promise<ChatResponse>` — one round-trip, cancellable                                        | stable                                                                      |
-| `toAnthropic`        | function | `(messages: Message[]) => { system: string; messages: AnthropicMessage[] }` — exported for testability                                 | evolving                                                                    |
-| `chatWithRetry`      | function | `(client, request, isCancelled, setActiveController, onRetry) => Promise<ChatResponse>` — at `infrastructure/llm/chatWithRetry.ts`     | stable                                                                      |
+| Symbol               | Kind     | Signature / shape                                                                                                                      | Stability |
+| -------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------- | --------- |
+| `LLM_BASE_URL`       | const    | `string` — defaults to `"http://127.0.0.1:1234/v1"` (LM Studio)                                                                        | stable    |
+| `MODEL`              | const    | `string` — defaults to `"qwen3.6-27b-uncensored-hauhaucs-balanced"`; honours `LLM_MODEL` then `OLLAMA_MODEL`                           | stable    |
+| `CONTEXT_WINDOW`     | const    | `number` — UI-only gauge value; defaults to `32768`                                                                                    | stable    |
+| `LlmClient`          | type     | `{ provider: "openai"; client: OpenAI } \| { provider: "anthropic"; client: Anthropic }`                                               | stable    |
+| `Message`            | type     | `{ role: "system"\|"user"\|"assistant"\|"tool"; content: string; images?: string[]; tool_calls?: ToolCall[] }`                         | stable    |
+| `ToolCall`           | type     | `{ function?: { name?: string; arguments?: Record<string, unknown> } }`                                                                | stable    |
+| `ChatOptions`        | type     | `{ model; messages; tools?; temperature?; think?; signal? }`                                                                           | stable    |
+| `ChatResponse`       | type     | `{ message: { content; tool_calls }; usage: { prompt_tokens; completion_tokens }; duration_ms }`                                       | stable    |
+| `newLlmClient`       | function | `() => LlmClient` — chooses provider from `LLM_PROVIDER` env (`"anthropic"` ⇒ Anthropic, else OpenAI-compat)                           | stable    |
+| `newAnthropicClient` | function | `() => LlmClient` — always Anthropic; for the rescue path, independent of primary provider. Model is per-call via `ChatOptions.model`. | stable    |
+| `chatOnce`           | function | `(client: LlmClient, opts: ChatOptions) => Promise<ChatResponse>` — one round-trip, cancellable                                        | stable    |
+| `toAnthropic`        | function | `(messages: Message[]) => { system: string; messages: AnthropicMessage[] }` — exported for testability                                 | evolving  |
+| `chatWithRetry`      | function | `(client, request, isCancelled, setActiveController, onRetry) => Promise<ChatResponse>` — at `infrastructure/llm/chatWithRetry.ts`     | stable    |
 
 ### Image attachment shape
 

@@ -85,24 +85,24 @@ This module never throws. All edge cases (missing variable, non-array JSON, bad 
 
 There are no tests for this module yet.
 
-| Spec section / claim                                               | Test file | Test name                                                           | Status     |
-| ------------------------------------------------------------------ | --------- | ------------------------------------------------------------------- | ---------- |
-| §2 `parseBlocks` returns `[]` on null + empty fallback             | —         | `parseBlocks: null+empty fallback returns []`                       | TODO(test) |
-| §2 `parseBlocks` migrates legacy instruction when json is null     | —         | `parseBlocks: null json + non-empty fallback yields one goal block` | TODO(test) |
-| §2 `parseBlocks` returns array unchanged when json is a JSON array | —         | `parseBlocks: passes through JSON array`                            | TODO(test) |
-| §2 `parseBlocks` returns `[]` on non-array JSON (no fallback)      | —         | `parseBlocks: non-array JSON drops fallback`                        | TODO(test) |
-| §2 `parseBlocks` falls back on malformed JSON                      | —         | `parseBlocks: malformed JSON falls back to instruction`             | TODO(test) |
-| §2 `substituteVars` no-`$` fast path                               | —         | `substituteVars: input without $ is returned identity`              | TODO(test) |
-| §2 `substituteVars` missing var preserves literal                  | —         | `substituteVars: unknown $name is left intact`                      | TODO(test) |
-| §2 `substituteVars` string value inserted as-is                    | —         | `substituteVars: string value substitutes verbatim`                 | TODO(test) |
-| §2 `substituteVars` non-string value JSON-encoded                  | —         | `substituteVars: array/object/number is JSON.stringified`           | TODO(test) |
-| §2 `substituteVars` multiple occurrences in one input              | —         | `substituteVars: replaces every match`                              | TODO(test) |
-| §2 `substituteVars` regex boundary (`$1`, `$.`, `$-` don't match)  | —         | `substituteVars: rejects illegal identifier starts`                 | TODO(test) |
-| §3 `Block.id` is a fresh UUID per `newBlock` call                  | —         | `newBlock: ids are unique across calls`                             | TODO(test) |
-| §3 every `BlockKind` value is constructable via `newBlock`         | —         | `newBlock: handles every BlockKind exhaustively`                    | TODO(test) |
-| §3 `walkBlocks` is pre-order and recurses into `for_each.body`     | —         | `walkBlocks: parent visited before nested body`                     | TODO(test) |
-| §3 `countBlocks` counts parent + nested                            | —         | `countBlocks: matches walkBlocks visit count`                       | TODO(test) |
-| §2 `substituteVars(undefined)` substitutes to ""                   | `__tests__/blocks.test.ts` | undefined-value cases                                  | done       |
+| Spec section / claim                                               | Test file                  | Test name                                                           | Status     |
+| ------------------------------------------------------------------ | -------------------------- | ------------------------------------------------------------------- | ---------- |
+| §2 `parseBlocks` returns `[]` on null + empty fallback             | —                          | `parseBlocks: null+empty fallback returns []`                       | TODO(test) |
+| §2 `parseBlocks` migrates legacy instruction when json is null     | —                          | `parseBlocks: null json + non-empty fallback yields one goal block` | TODO(test) |
+| §2 `parseBlocks` returns array unchanged when json is a JSON array | —                          | `parseBlocks: passes through JSON array`                            | TODO(test) |
+| §2 `parseBlocks` returns `[]` on non-array JSON (no fallback)      | —                          | `parseBlocks: non-array JSON drops fallback`                        | TODO(test) |
+| §2 `parseBlocks` falls back on malformed JSON                      | —                          | `parseBlocks: malformed JSON falls back to instruction`             | TODO(test) |
+| §2 `substituteVars` no-`$` fast path                               | —                          | `substituteVars: input without $ is returned identity`              | TODO(test) |
+| §2 `substituteVars` missing var preserves literal                  | —                          | `substituteVars: unknown $name is left intact`                      | TODO(test) |
+| §2 `substituteVars` string value inserted as-is                    | —                          | `substituteVars: string value substitutes verbatim`                 | TODO(test) |
+| §2 `substituteVars` non-string value JSON-encoded                  | —                          | `substituteVars: array/object/number is JSON.stringified`           | TODO(test) |
+| §2 `substituteVars` multiple occurrences in one input              | —                          | `substituteVars: replaces every match`                              | TODO(test) |
+| §2 `substituteVars` regex boundary (`$1`, `$.`, `$-` don't match)  | —                          | `substituteVars: rejects illegal identifier starts`                 | TODO(test) |
+| §3 `Block.id` is a fresh UUID per `newBlock` call                  | —                          | `newBlock: ids are unique across calls`                             | TODO(test) |
+| §3 every `BlockKind` value is constructable via `newBlock`         | —                          | `newBlock: handles every BlockKind exhaustively`                    | TODO(test) |
+| §3 `walkBlocks` is pre-order and recurses into `for_each.body`     | —                          | `walkBlocks: parent visited before nested body`                     | TODO(test) |
+| §3 `countBlocks` counts parent + nested                            | —                          | `countBlocks: matches walkBlocks visit count`                       | TODO(test) |
+| §2 `substituteVars(undefined)` substitutes to ""                   | `__tests__/blocks.test.ts` | undefined-value cases                                               | done       |
 
 ### Deliberately not tested (here)
 

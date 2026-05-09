@@ -30,22 +30,22 @@ Server-side hoisted (resolved). `STEP_KINDS` / `StepKind`, `EndEvent`, and `LIVE
 
 For each event, where it lands today. ✅ = lands; ⛔ = does not.
 
-| Event         | SSE | DB `steps` | Trace log | Notes                                                 |
-| ------------- | --- | ---------- | --------- | ----------------------------------------------------- |
-| `block_start` | ✅  | ✅         | ✅        |                                                       |
+| Event         | SSE | DB `steps` | Trace log | Notes                                                                        |
+| ------------- | --- | ---------- | --------- | ---------------------------------------------------------------------------- |
+| `block_start` | ✅  | ✅         | ✅        |                                                                              |
 | `block_end`   | ✅  | ✅         | ✅        | one emission per block (rescue merged via `mergeRescuedOutcome` before emit) |
-| `thought`     | ✅  | ✅         | ⛔        |                                                       |
-| `tool_call`   | ✅  | ✅         | ✅        |                                                       |
-| `tool_result` | ✅  | ✅         | ✅        |                                                       |
-| `var_set`     | ✅  | ✅         | ✅        |                                                       |
-| `remember`    | ✅  | ✅         | ✅        |                                                       |
-| `page_state`  | ✅  | ✅         | ⛔        | now persisted via wrapper around `emit` in `runAgent` |
-| `stats`       | ✅  | ✅         | ⛔        | now persisted                                         |
-| `paused`      | ✅  | ✅         | ✅        |                                                       |
-| `resumed`     | ✅  | ✅         | ✅        | Emitted by routes, not agent                          |
-| `error`       | ✅  | ✅         | ✅        |                                                       |
-| `final`       | ✅  | ✅         | ✅        |                                                       |
-| `end`         | ✅  | ⛔         | ✅        | End marker — bus deletes topic 5s after               |
+| `thought`     | ✅  | ✅         | ⛔        |                                                                              |
+| `tool_call`   | ✅  | ✅         | ✅        |                                                                              |
+| `tool_result` | ✅  | ✅         | ✅        |                                                                              |
+| `var_set`     | ✅  | ✅         | ✅        |                                                                              |
+| `remember`    | ✅  | ✅         | ✅        |                                                                              |
+| `page_state`  | ✅  | ✅         | ⛔        | now persisted via wrapper around `emit` in `runAgent`                        |
+| `stats`       | ✅  | ✅         | ⛔        | now persisted                                                                |
+| `paused`      | ✅  | ✅         | ✅        |                                                                              |
+| `resumed`     | ✅  | ✅         | ✅        | Emitted by routes, not agent                                                 |
+| `error`       | ✅  | ✅         | ✅        |                                                                              |
+| `final`       | ✅  | ✅         | ✅        |                                                                              |
+| `end`         | ✅  | ⛔         | ✅        | End marker — bus deletes topic 5s after                                      |
 
 ## Rotation, redaction, retention
 

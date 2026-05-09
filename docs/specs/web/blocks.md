@@ -82,17 +82,17 @@ This module never throws. `newBlock`'s switch is exhaustive over `BlockKind`; `s
 
 There are no tests for this module yet.
 
-| Spec section / claim                                        | Test file | Test name                                                              | Status     |
-| ----------------------------------------------------------- | --------- | ---------------------------------------------------------------------- | ---------- |
-| §3 every `BlockKind` value is constructable via `newBlock`  | —         | `newBlock: handles every BlockKind exhaustively`                       | TODO(test) |
-| §3 `newBlock` returns distinct ids across calls             | —         | `newBlock: ids are unique across calls`                                | TODO(test) |
-| §3 fallback id path produces UUID-shaped ids                | `web/src/__tests__/blocks.test.ts` | uuid-shape regression                                | done       |
-| §2 `summaryOf` is total over the union                      | —         | `summaryOf: returns non-empty for every kind`                          | TODO(test) |
-| §2 `summaryOf` truncation rules per kind                    | —         | `summaryOf: 200-char and 60-char truncations apply`                    | TODO(test) |
-| §2 `blockMeta` returns metadata for every kind              | —         | `blockMeta: every BlockKind resolves`                                  | TODO(test) |
-| §3 `BLOCK_KINDS` covers every `BlockKind` (set equality)    | —         | `BLOCK_KINDS: set-equal to BlockKind union`                            | TODO(test) |
-| §6 web↔server type union parity                             | —         | `web Block union matches server Block union` (cross-package type test) | TODO(test) |
-| §6 web↔server `newBlock` defaults parity                    | —         | `web newBlock defaults match server newBlock defaults`                 | TODO(test) |
+| Spec section / claim                                       | Test file                          | Test name                                                              | Status     |
+| ---------------------------------------------------------- | ---------------------------------- | ---------------------------------------------------------------------- | ---------- |
+| §3 every `BlockKind` value is constructable via `newBlock` | —                                  | `newBlock: handles every BlockKind exhaustively`                       | TODO(test) |
+| §3 `newBlock` returns distinct ids across calls            | —                                  | `newBlock: ids are unique across calls`                                | TODO(test) |
+| §3 fallback id path produces UUID-shaped ids               | `web/src/__tests__/blocks.test.ts` | uuid-shape regression                                                  | done       |
+| §2 `summaryOf` is total over the union                     | —                                  | `summaryOf: returns non-empty for every kind`                          | TODO(test) |
+| §2 `summaryOf` truncation rules per kind                   | —                                  | `summaryOf: 200-char and 60-char truncations apply`                    | TODO(test) |
+| §2 `blockMeta` returns metadata for every kind             | —                                  | `blockMeta: every BlockKind resolves`                                  | TODO(test) |
+| §3 `BLOCK_KINDS` covers every `BlockKind` (set equality)   | —                                  | `BLOCK_KINDS: set-equal to BlockKind union`                            | TODO(test) |
+| §6 web↔server type union parity                            | —                                  | `web Block union matches server Block union` (cross-package type test) | TODO(test) |
+| §6 web↔server `newBlock` defaults parity                   | —                                  | `web newBlock defaults match server newBlock defaults`                 | TODO(test) |
 
 ### Deliberately not tested (here)
 
@@ -103,23 +103,23 @@ There are no tests for this module yet.
 
 ### Drift table — `web/src/blocks.ts` vs `server/src/blocks.ts`
 
-| Concern                       | Server                                                 | Web                                                        | Notes                                                                          |
-| ----------------------------- | ------------------------------------------------------ | ---------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| `BlockKind` union             | 9 kinds                                                | 9 kinds                                                    | ✅ Identical.                                                                  |
-| `ClickRole` union             | 11 values                                              | 11 values                                                  | ✅ Identical.                                                                  |
-| `BaseBlock` shape             | `{ id, kind, pauseAfter? }`                            | `{ id, kind, pauseAfter? }`                                | ✅ Identical.                                                                  |
-| Per-kind interface fields     | matches                                                | matches                                                    | ✅ Field names, types, optionality all match.                                  |
-| `newBlock` defaults           | identical values                                       | identical values                                           | ✅ But re-implemented, not imported.                                           |
-| UUID source                   | `node:crypto.randomUUID`                               | `crypto.randomUUID` with v4-shaped Math.random fallback    | ✅ Fallback is UUID-shaped. Regression: web tests assert the v4 regex.         |
-| `instructionToBlocks`         | exported                                               | NOT present                                                | server-only — UI does not migrate legacy text.                                 |
-| `parseBlocks`                 | exported                                               | NOT present                                                | server-only — UI receives `Block[]` from API.                                  |
-| `substituteVars`              | exported                                               | NOT present                                                | server-only — substitution happens in executor.                                |
-| `countBlocks` / `walkBlocks`  | exported                                               | NOT present                                                | server-only walkers.                                                           |
-| `KIND_META` / `blockMeta`     | NOT present                                            | exported                                                   | web-only — UI presentation.                                                    |
-| `BLOCK_KINDS`                 | NOT present                                            | exported (custom order)                                    | web-only — menu ordering.                                                      |
-| `CLICK_ROLES` (runtime array) | NOT present (only the type)                            | exported                                                   | web-only — `<select>` options.                                                 |
-| `summaryOf`                   | NOT present (server uses `blockSummary` in `agent.ts`) | exported                                                   | web-only; subtly different output than server's `blockSummary`.                |
-| JSDoc comments                | present on most fields                                 | none                                                       | doc-only drift; no behavioural impact.                                         |
+| Concern                       | Server                                                 | Web                                                     | Notes                                                                  |
+| ----------------------------- | ------------------------------------------------------ | ------------------------------------------------------- | ---------------------------------------------------------------------- |
+| `BlockKind` union             | 9 kinds                                                | 9 kinds                                                 | ✅ Identical.                                                          |
+| `ClickRole` union             | 11 values                                              | 11 values                                               | ✅ Identical.                                                          |
+| `BaseBlock` shape             | `{ id, kind, pauseAfter? }`                            | `{ id, kind, pauseAfter? }`                             | ✅ Identical.                                                          |
+| Per-kind interface fields     | matches                                                | matches                                                 | ✅ Field names, types, optionality all match.                          |
+| `newBlock` defaults           | identical values                                       | identical values                                        | ✅ But re-implemented, not imported.                                   |
+| UUID source                   | `node:crypto.randomUUID`                               | `crypto.randomUUID` with v4-shaped Math.random fallback | ✅ Fallback is UUID-shaped. Regression: web tests assert the v4 regex. |
+| `instructionToBlocks`         | exported                                               | NOT present                                             | server-only — UI does not migrate legacy text.                         |
+| `parseBlocks`                 | exported                                               | NOT present                                             | server-only — UI receives `Block[]` from API.                          |
+| `substituteVars`              | exported                                               | NOT present                                             | server-only — substitution happens in executor.                        |
+| `countBlocks` / `walkBlocks`  | exported                                               | NOT present                                             | server-only walkers.                                                   |
+| `KIND_META` / `blockMeta`     | NOT present                                            | exported                                                | web-only — UI presentation.                                            |
+| `BLOCK_KINDS`                 | NOT present                                            | exported (custom order)                                 | web-only — menu ordering.                                              |
+| `CLICK_ROLES` (runtime array) | NOT present (only the type)                            | exported                                                | web-only — `<select>` options.                                         |
+| `summaryOf`                   | NOT present (server uses `blockSummary` in `agent.ts`) | exported                                                | web-only; subtly different output than server's `blockSummary`.        |
+| JSDoc comments                | present on most fields                                 | none                                                    | doc-only drift; no behavioural impact.                                 |
 
 ### Open notes
 

@@ -38,10 +38,10 @@ There are no other callbacks. There is no `onCancel` — closing the panel via t
 
 ### Errors
 
-| Surface             | Shown when                                          | UI                                                                                         |
-| ------------------- | --------------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| inline red banner   | `api.compileBlocks` rejects (any error from `j<T>`) | `(err as Error).message` — typically `"502 {\"error\":\"...\"}"`. Raw, not pretty-printed. |
-| inline red banner   | response `blocks.length === 0`                      | Literal: `"Model returned no blocks. Try rephrasing or being more specific."`              |
+| Surface                                         | Shown when                                          | UI                                                                                         |
+| ----------------------------------------------- | --------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| inline red banner                               | `api.compileBlocks` rejects (any error from `j<T>`) | `(err as Error).message` — typically `"502 {\"error\":\"...\"}"`. Raw, not pretty-printed. |
+| inline red banner                               | response `blocks.length === 0`                      | Literal: `"Model returned no blocks. Try rephrasing or being more specific."`              |
 | `useUiPrompts().confirm({ destructive })` modal | `mode === "replace"` and `existingCount > 0`        | `"Replace existing N block(s)?"` with singular/plural. Cancel aborts the apply.            |
 
 There is no toast system, no retry button beyond clicking "Generate blocks" again, and no distinction in UI between a 502 and a network failure.

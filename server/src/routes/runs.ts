@@ -282,6 +282,18 @@ export async function runsRoutes(app: FastifyInstance) {
   });
 
   // SSE stream of agent events for a live run.
+  //
+  // Each event line carries an `id:` annotation so EventSource records it in
+  // its `lastEventId` field; on a reconnect, the browser sends our id back as
+  // the `Last-Event-ID` request header. We use that to skip already-replayed
+  // step rows and pick up where the previous connection left off, instead of
+  // starting the bootstrap from idx 0 every time.
+  //
+  // Replay-row ids are simply `r-${step.idx}`. Live events from the bus get
+  // a synthetic `live-${counter}` id that's unique per stream connection but
+  // not portable across reconnects (live events are by definition transient
+  // between reconnects — anything important gets persisted before emit and
+  // shows up on the next replay).
   app.get<{ Params: { id: string } }>("/api/runs/:id/stream", async (req, reply) => {
     const runId = Number(req.params.id);
     reply.raw.writeHead(200, {
@@ -291,7 +303,27 @@ export async function runsRoutes(app: FastifyInstance) {
       "X-Accel-Buffering": "no",
     });
 
-    const send = (event: unknown) => {
+    // Last-Event-ID is sent by EventSource on auto-reconnect. Parse out the
+    // step idx so we can skip rows the client already has.
+    const lastEventIdHeader =
+      typeof req.headers["last-event-id"] === "string"
+        ? req.headers["last-event-id"]
+        : null;
+    const resumeFromIdx = (() => {
+      if (!lastEventIdHeader) return -1;
+      const m = /^r-(\d+)$/.exec(lastEventIdHeader);
+      if (!m) return -1;
+      const n = Number(m[1]);
+      return Number.isFinite(n) ? n : -1;
+    })();
+
+    let liveCounter = 0;
+    const sendReplay = (step: Step) => {
+      reply.raw.write(`id: r-${step.idx}\n`);
+      reply.raw.write(`data: ${JSON.stringify({ replay: true, step })}\n\n`);
+    };
+    const sendLive = (event: unknown) => {
+      reply.raw.write(`id: live-${++liveCounter}\n`);
       reply.raw.write(`data: ${JSON.stringify(event)}\n\n`);
     };
 
@@ -305,7 +337,7 @@ export async function runsRoutes(app: FastifyInstance) {
     const liveBuffer: LiveEvent[] = [];
     let live = false;
     const unsubscribe = subscribe(runId, (event) => {
-      if (live) send(event);
+      if (live) sendLive(event);
       else liveBuffer.push(event);
     });
 
@@ -313,14 +345,16 @@ export async function runsRoutes(app: FastifyInstance) {
       unsubscribe();
     });
 
-    // Replay any steps already persisted (so a late connection sees the full history).
+    // Replay any steps already persisted, skipping anything the reconnecting
+    // client already received (resumeFromIdx > -1).
     const existing = db
-      .prepare("SELECT * FROM steps WHERE run_id = ? ORDER BY idx ASC")
-      .all(runId) as Step[];
+      .prepare("SELECT * FROM steps WHERE run_id = ? AND idx > ? ORDER BY idx ASC")
+      .all(runId, resumeFromIdx) as Step[];
     for (const s of existing) {
-      send({ replay: true, step: s });
+      sendReplay(s);
     }
-    let lastReplayedIdx = existing.length > 0 ? existing[existing.length - 1].idx : -1;
+    let lastReplayedIdx =
+      existing.length > 0 ? existing[existing.length - 1].idx : resumeFromIdx;
 
     // Tail re-read: catch anything persisted between subscribe and the
     // primary read above. Persist runs synchronously inside the agent, so
@@ -330,13 +364,13 @@ export async function runsRoutes(app: FastifyInstance) {
       .prepare("SELECT * FROM steps WHERE run_id = ? AND idx > ? ORDER BY idx ASC")
       .all(runId, lastReplayedIdx) as Step[];
     for (const s of tail) {
-      send({ replay: true, step: s });
+      sendReplay(s);
       lastReplayedIdx = s.idx;
     }
 
     const run = db.prepare("SELECT * FROM runs WHERE id = ?").get(runId) as Run | undefined;
     if (run && run.status !== "running") {
-      send({ kind: "end", status: run.status, result: run.result, error: run.error });
+      sendLive({ kind: "end", status: run.status, result: run.result, error: run.error });
       unsubscribe();
       reply.raw.end();
       return;
@@ -347,7 +381,7 @@ export async function runsRoutes(app: FastifyInstance) {
     // mid-pause leaves the UI thinking the run is still actively running.
     if (isPaused(runId)) {
       const info = getPauseInfo(runId);
-      send({ kind: "paused", reason: info?.reason, auto: info?.auto });
+      sendLive({ kind: "paused", reason: info?.reason, auto: info?.auto });
     }
 
     // Drain the buffer. Persistable kinds are already in the replay/tail
@@ -355,7 +389,7 @@ export async function runsRoutes(app: FastifyInstance) {
     // forwarding. paused/resumed in-buffer are stale once we've already
     // sent a synthetic paused (above), so it's safe to drop them too.
     for (const ev of liveBuffer) {
-      if (!PERSISTABLE_KINDS.has(ev.kind)) send(ev);
+      if (!PERSISTABLE_KINDS.has(ev.kind)) sendLive(ev);
     }
     liveBuffer.length = 0;
     live = true;

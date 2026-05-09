@@ -16,14 +16,14 @@ The frontend speaks to the Fastify server through exactly one module: this one. 
 
 ### Exports
 
-| Symbol     | Kind  | Signature / shape                                                                                                                  | Stability                                   |
-| ---------- | ----- | ---------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
-| `Task`     | type  | `{ id, name, instruction, steps: string \| null, created_at }` (steps is JSON-encoded `Block[]`)                                   | mirrors `server/src/db.ts`; ⚠️ duplication  |
-| `Run`      | type  | `{ id, task_id, status: "running"\|"done"\|"error"\|"cancelled", result, error, started_at, finished_at, is_paused? }`             | mirrors `server/src/db.ts`; ⚠️ duplication  |
-| `Step`     | type  | `{ id, run_id, idx, kind: full StepKind union, payload: string, screenshot_path, created_at }` | matches server's `domain/run.ts::StepKind` (kept in sync; cross-workspace shared `domain/` deferred) |
-| `Settings` | type  | `{ rescue_enabled, rescue_model, rescue_on_cancel, api_key_configured, lesson_count }`                                             | matches `http-settings.md` §2               |
-| `Lesson`   | type  | `{ id, run_id, block_id, lesson, situation, created_at }`                                                                          | stable                                      |
-| `api`      | const | object literal with the methods below; not a class                                                                                 | stable                                      |
+| Symbol     | Kind  | Signature / shape                                                                                                      | Stability                                                                                            |
+| ---------- | ----- | ---------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `Task`     | type  | `{ id, name, instruction, steps: string \| null, created_at }` (steps is JSON-encoded `Block[]`)                       | mirrors `server/src/db.ts`; ⚠️ duplication                                                           |
+| `Run`      | type  | `{ id, task_id, status: "running"\|"done"\|"error"\|"cancelled", result, error, started_at, finished_at, is_paused? }` | mirrors `server/src/db.ts`; ⚠️ duplication                                                           |
+| `Step`     | type  | `{ id, run_id, idx, kind: full StepKind union, payload: string, screenshot_path, created_at }`                         | matches server's `domain/run.ts::StepKind` (kept in sync; cross-workspace shared `domain/` deferred) |
+| `Settings` | type  | `{ rescue_enabled, rescue_model, rescue_on_cancel, api_key_configured, lesson_count }`                                 | matches `http-settings.md` §2                                                                        |
+| `Lesson`   | type  | `{ id, run_id, block_id, lesson, situation, created_at }`                                                              | stable                                                                                               |
+| `api`      | const | object literal with the methods below; not a class                                                                     | stable                                                                                               |
 
 ### Function table — client method ↔ server endpoint
 

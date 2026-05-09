@@ -22,7 +22,7 @@ Three tiny modules collected into one spec because each is too small to justify 
 | `selectedId` | `number \| null`       | The matching row gets highlighted (`bg-zinc-800`). `null` → no row highlighted.  |
 | `onSelect`   | `(id: number) => void` | Fires on row body click. Not fired by the delete affordance.                     |
 | `onCreate`   | `() => void`           | Fires on the green "+ New task" button.                                          |
-| `onDelete`   | `(id: number) => void` | Fires only after `useUiPrompts().confirm({ destructive })` resolves to `true`.  |
+| `onDelete`   | `(id: number) => void` | Fires only after `useUiPrompts().confirm({ destructive })` resolves to `true`.   |
 
 Behaviour: pure render of `tasks`, no internal state, no fetch. Empty-name rows display `"(untitled)"`. The delete `✕` button is `hidden group-hover:inline` — invisible until the row is hovered.
 

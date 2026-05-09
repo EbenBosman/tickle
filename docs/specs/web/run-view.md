@@ -16,13 +16,13 @@
 
 ### Exports
 
-| Symbol           | Kind     | Signature / shape                                                                                                | Stability |
-| ---------------- | -------- | ---------------------------------------------------------------------------------------------------------------- | --------- |
-| `RunView`        | function | `(props: RunViewProps) => JSX.Element` — default export of the file (named).                                     | stable    |
-| `BlockStatus`    | type     | `"pending" \| "running" \| "done" \| "failed" \| "skipped"`                                                      | stable    |
-| `RunStatsSample` | type     | `{ model: string; prompt_tokens: number; output_tokens: number; eval_duration_ms: number; tps: number }`         | stable    |
-| `EntryCard`      | —        | local; not exported.                                                                                             | —         |
-| `parseSqliteUtc` | —        | imported from `web/src/state/parseSqliteUtc.ts` (with sibling `formatDuration` and `runDuration`). | stable    |
+| Symbol           | Kind     | Signature / shape                                                                                        | Stability |
+| ---------------- | -------- | -------------------------------------------------------------------------------------------------------- | --------- |
+| `RunView`        | function | `(props: RunViewProps) => JSX.Element` — default export of the file (named).                             | stable    |
+| `BlockStatus`    | type     | `"pending" \| "running" \| "done" \| "failed" \| "skipped"`                                              | stable    |
+| `RunStatsSample` | type     | `{ model: string; prompt_tokens: number; output_tokens: number; eval_duration_ms: number; tps: number }` | stable    |
+| `EntryCard`      | —        | local; not exported.                                                                                     | —         |
+| `parseSqliteUtc` | —        | imported from `web/src/state/parseSqliteUtc.ts` (with sibling `formatDuration` and `runDuration`).       | stable    |
 
 ### Props (`RunViewProps`)
 
@@ -42,11 +42,11 @@
 
 ### Errors surfaced
 
-| Source                                                          | Surface                                                          |
-| --------------------------------------------------------------- | ---------------------------------------------------------------- |
+| Source                                                          | Surface                                                                           |
+| --------------------------------------------------------------- | --------------------------------------------------------------------------------- |
 | `api.pauseRun` / `resumeRun` / `cancelRun` / `deleteRun` reject | Surfaced via `useUiPrompts().toast.error(...)` (auto-dismissing toast). No retry. |
-| `EventSource.onerror`                                           | `es.close()` — no auto-reconnect, no UI signal. See §6.          |
-| `api.getRun` reject (mount or post-`end`)                       | Silently swallowed (`.catch(() => {})`).                         |
+| `EventSource.onerror`                                           | `es.close()` — no auto-reconnect, no UI signal. See §6.                           |
+| `api.getRun` reject (mount or post-`end`)                       | Silently swallowed (`.catch(() => {})`).                                          |
 
 ## 3. Invariants
 
@@ -93,16 +93,16 @@
 
 The current single file mixes **eight** concerns. The `_LAYERS.md` target carves them as follows. This list is the spec for what the refactor must produce:
 
-| Concern in today's `RunView.tsx`                                                                                                                                       | Target file (`web/src/features/run-view/` unless noted)                                                                     |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| Concern in today's `RunView.tsx`                                                                                                                                       | Target file (`web/src/features/run-view/` unless noted)                                                                                                                                                                                                                              |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | EventSource lifecycle, replay handling, identity-reset on `runId` change, mount/`end` `getRun` fallbacks                                                               | **done** — `state/useRunStream.ts` returns `{ entries, status, paused, pauseInfo, pageState, memory, startedAt, finishedAt }`; `renderStepBody` is exported as `renderStepBody`. Callbacks (`onStats`, `onBlockStatus`) flow through a ref so they don't force the effect to re-run. |
-| `parseSqliteUtc`, `formatDuration`, `runDuration`                                                                                                                      | **done** — `state/parseSqliteUtc.ts`. The 1s interval and freeze-on-terminal logic still live in `RunView.tsx` (next step: `Timer.tsx`).                                                |
-| Header (Run #, elapsed pill, Pause/Resume/Stop/Delete buttons, status pill)                                                                                            | `RunView.tsx` orchestration + a small `RunHeader.tsx`                                                                       |
-| `pageState` banner                                                                                                                                                     | `PageStateBanner.tsx` (props: `{ url, title } \| null`)                                                                     |
-| Auto-pause amber explainer panel                                                                                                                                       | `PauseBanner.tsx` (props: `{ reason?, auto? }`)                                                                             |
-| `memory[]` collapsed violet panel                                                                                                                                      | `MemoryPanel.tsx` (props: `{ notes: string[] }`)                                                                            |
-| Entry list rendering loop + auto-scroll-to-bottom                                                                                                                      | `EntryStream.tsx` (props: `{ entries }`); add windowing here.                                                               |
-| Per-entry rendering switch (`EntryCard` and its kind-specific cards: thought / tool_call / tool_result / block_start / block_end / var_set / remember / error / final) | `EntryCard.tsx` + one card-per-kind (or a switch table) under `entry-cards/`                                                |
+| `parseSqliteUtc`, `formatDuration`, `runDuration`                                                                                                                      | **done** — `state/parseSqliteUtc.ts`. The 1s interval and freeze-on-terminal logic still live in `RunView.tsx` (next step: `Timer.tsx`).                                                                                                                                             |
+| Header (Run #, elapsed pill, Pause/Resume/Stop/Delete buttons, status pill)                                                                                            | `RunView.tsx` orchestration + a small `RunHeader.tsx`                                                                                                                                                                                                                                |
+| `pageState` banner                                                                                                                                                     | `PageStateBanner.tsx` (props: `{ url, title } \| null`)                                                                                                                                                                                                                              |
+| Auto-pause amber explainer panel                                                                                                                                       | `PauseBanner.tsx` (props: `{ reason?, auto? }`)                                                                                                                                                                                                                                      |
+| `memory[]` collapsed violet panel                                                                                                                                      | `MemoryPanel.tsx` (props: `{ notes: string[] }`)                                                                                                                                                                                                                                     |
+| Entry list rendering loop + auto-scroll-to-bottom                                                                                                                      | `EntryStream.tsx` (props: `{ entries }`); add windowing here.                                                                                                                                                                                                                        |
+| Per-entry rendering switch (`EntryCard` and its kind-specific cards: thought / tool_call / tool_result / block_start / block_end / var_set / remember / error / final) | `EntryCard.tsx` + one card-per-kind (or a switch table) under `entry-cards/`                                                                                                                                                                                                         |
 
 Cross-cutting:
 

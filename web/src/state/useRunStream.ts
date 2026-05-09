@@ -128,17 +128,25 @@ export function useRunStream(
       if ("replay" in ev) {
         const s = ev.step;
         const payload = JSON.parse(s.payload) as Record<string, unknown>;
-        setEntries((prev) => [
-          ...prev,
-          {
-            id: `r-${s.idx}`,
-            kind: s.kind as Entry["kind"],
-            body: renderStepBody(s.kind, payload),
-            ok: s.kind === "tool_result" ? Boolean(payload.ok) : undefined,
-            toolName: typeof payload.name === "string" ? payload.name : undefined,
-            screenshot: s.screenshot_path ?? undefined,
-          },
-        ]);
+        const entryId = `r-${s.idx}`;
+        setEntries((prev) => {
+          // Defensive dedup. The server skips already-replayed rows on
+          // reconnect via Last-Event-ID, but if anything ever slips
+          // through (e.g. server restarts and the resume idx becomes
+          // meaningless), we'd rather miss than duplicate.
+          if (prev.some((e) => e.id === entryId)) return prev;
+          return [
+            ...prev,
+            {
+              id: entryId,
+              kind: s.kind as Entry["kind"],
+              body: renderStepBody(s.kind, payload),
+              ok: s.kind === "tool_result" ? Boolean(payload.ok) : undefined,
+              toolName: typeof payload.name === "string" ? payload.name : undefined,
+              screenshot: s.screenshot_path ?? undefined,
+            },
+          ];
+        });
       } else if (ev.kind === "thought") {
         setEntries((p) => [...p, { id: `t-${counter}`, kind: "thought", body: ev.text }]);
       } else if (ev.kind === "tool_call") {
@@ -252,8 +260,13 @@ export function useRunStream(
           });
       }
     };
+    // EventSource has built-in exponential auto-reconnect; we just have
+    // to NOT call .close() on transient errors. The browser sends the
+    // last `id:` we received as `Last-Event-ID`, and the server uses
+    // that to skip already-replayed rows. We only close explicitly on
+    // the terminal `end` event (above) and on unmount.
     es.onerror = () => {
-      es.close();
+      // No-op. Native reconnect kicks in.
     };
 
     return () => es.close();

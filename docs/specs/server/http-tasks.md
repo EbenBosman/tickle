@@ -51,19 +51,19 @@ Task definitions are the persistent input the agent operates on. This module is 
 
 ## 5. How tested
 
-| Spec section / claim                                           | Test file | Test name | Status                                          |
-| -------------------------------------------------------------- | --------- | --------- | ----------------------------------------------- |
-| §2 `POST` 400 on empty name                                    | —         | —         | TODO(test)                                      |
-| §2 `GET /:id` 404 on unknown id                                | —         | —         | TODO(test)                                      |
-| §3 I1 read always returns non-null `steps`                     | —         | —         | TODO(test)                                      |
-| §3 I2 `ensureSteps` idempotency / no extra UPDATE              | —         | —         | TODO(test)                                      |
-| §3 I3 empty instruction migrates to `[]`                       | —         | —         | TODO(test)                                      |
-| §3 I4 non-empty instruction yields single `goal` block         | —         | —         | TODO(test)                                      |
-| §3 I5 first-GET persistence to DB                              | —         | —         | TODO(test)                                      |
-| §3 I7 `PUT` field preservation when omitted                    | —         | —         | TODO(test)                                      |
-| §3 I7 `PUT name: ""` preserves existing name                   | `routes/__tests__/tasks.test.ts` | name preservation cases | done                              |
-| §6 drift — `POST steps` rejects malformed block                | —         | —         | TODO(test) — currently no validation            |
-| §6 `DELETE` 404 on unknown id                                  | `routes/__tests__/tasks.test.ts` | unknown-id cases | done                                  |
+| Spec section / claim                                   | Test file                        | Test name               | Status                               |
+| ------------------------------------------------------ | -------------------------------- | ----------------------- | ------------------------------------ |
+| §2 `POST` 400 on empty name                            | —                                | —                       | TODO(test)                           |
+| §2 `GET /:id` 404 on unknown id                        | —                                | —                       | TODO(test)                           |
+| §3 I1 read always returns non-null `steps`             | —                                | —                       | TODO(test)                           |
+| §3 I2 `ensureSteps` idempotency / no extra UPDATE      | —                                | —                       | TODO(test)                           |
+| §3 I3 empty instruction migrates to `[]`               | —                                | —                       | TODO(test)                           |
+| §3 I4 non-empty instruction yields single `goal` block | —                                | —                       | TODO(test)                           |
+| §3 I5 first-GET persistence to DB                      | —                                | —                       | TODO(test)                           |
+| §3 I7 `PUT` field preservation when omitted            | —                                | —                       | TODO(test)                           |
+| §3 I7 `PUT name: ""` preserves existing name           | `routes/__tests__/tasks.test.ts` | name preservation cases | done                                 |
+| §6 drift — `POST steps` rejects malformed block        | —                                | —                       | TODO(test) — currently no validation |
+| §6 `DELETE` 404 on unknown id                          | `routes/__tests__/tasks.test.ts` | unknown-id cases        | done                                 |
 
 ### Deliberately not tested
 

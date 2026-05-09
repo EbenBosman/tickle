@@ -56,17 +56,17 @@ This component never throws and surfaces no async errors. Invalid block shapes (
 
 The bulk of the file is the `BlockBody` switch. Each row is a falsifiable claim about which schema fields are exposed. Hidden fields and drift are flagged.
 
-| Kind            | Exposed fields                                                                                                                  | Hidden / not exposed                                  | Validation                                                          | Drift |
-| --------------- | ------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- | ------------------------------------------------------------------- | ----- |
-| `navigate`      | `url` (single `<input type="url">`)                                                                                             | —                                                     | none (empty string allowed)                                         | —     |
-| `goal`          | `description` (textarea, monospace), `max_steps` (optional number input, default 12, range 1–100)                               | —                                                     | `max_steps` clamped via the input range                            | —     |
-| `pause`         | `message` (single text input, optional)                                                                                         | —                                                     | none                                                                | —     |
-| `click`         | `target` (text), `role` (select over `CLICK_ROLES`)                                                                             | —                                                     | role constrained by `<select>`                                      | —     |
-| `fill`          | `target` (text), `value` (text; `$var` interpolated server-side)                                                                | —                                                     | none                                                                | —     |
-| `extract`       | `target` (text), `var_name` (text, sanitised on input)                                                                          | —                                                     | `var_name` strips any char outside `[a-zA-Z0-9_]` on each keystroke | —     |
-| `verify`        | `condition` (text), `on_fail` (select: `halt` \| `pause`)                                                                       | —                                                     | `on_fail` constrained by `<select>`                                 | —     |
-| `questionnaire` | `context` (text, optional), `unanswered_var` (text, sanitised)                                                                  | —                                                     | `unanswered_var` strips non-`[a-zA-Z0-9_]`                          | —     |
-| `for_each`      | `items` (text — accepts `$name` or literal JSON; never `substituteVars`'d), `item_var` (text), `body` (recursive `<BlockList>`) | —                                                     | none on `items`; user-typed sanity unchecked                        | —     |
+| Kind            | Exposed fields                                                                                                                  | Hidden / not exposed | Validation                                                          | Drift |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------- | -------------------- | ------------------------------------------------------------------- | ----- |
+| `navigate`      | `url` (single `<input type="url">`)                                                                                             | —                    | none (empty string allowed)                                         | —     |
+| `goal`          | `description` (textarea, monospace), `max_steps` (optional number input, default 12, range 1–100)                               | —                    | `max_steps` clamped via the input range                             | —     |
+| `pause`         | `message` (single text input, optional)                                                                                         | —                    | none                                                                | —     |
+| `click`         | `target` (text), `role` (select over `CLICK_ROLES`)                                                                             | —                    | role constrained by `<select>`                                      | —     |
+| `fill`          | `target` (text), `value` (text; `$var` interpolated server-side)                                                                | —                    | none                                                                | —     |
+| `extract`       | `target` (text), `var_name` (text, sanitised on input)                                                                          | —                    | `var_name` strips any char outside `[a-zA-Z0-9_]` on each keystroke | —     |
+| `verify`        | `condition` (text), `on_fail` (select: `halt` \| `pause`)                                                                       | —                    | `on_fail` constrained by `<select>`                                 | —     |
+| `questionnaire` | `context` (text, optional), `unanswered_var` (text, sanitised)                                                                  | —                    | `unanswered_var` strips non-`[a-zA-Z0-9_]`                          | —     |
+| `for_each`      | `items` (text — accepts `$name` or literal JSON; never `substituteVars`'d), `item_var` (text), `body` (recursive `<BlockList>`) | —                    | none on `items`; user-typed sanity unchecked                        | —     |
 
 All inputs receive `disabled={isLocked}`. All editable rows call `onChange({ field } as Partial<Block>)` — the unsafe cast is necessary because `Block` is a discriminated union and TypeScript cannot narrow `Partial<Block>` to the active variant.
 
@@ -119,19 +119,19 @@ Each `<Kind>Editor` takes `({ block: KindBlock, onChange: (patch: Partial<KindBl
 
 There are no tests for this component yet.
 
-| Spec section / claim                                               | Test file | Test name                                                                            | Status     |
-| ------------------------------------------------------------------ | --------- | ------------------------------------------------------------------------------------ | ---------- |
-| §3 lock predicate (`isRunning \|\| done \|\| failed` → uneditable) | —         | `locked block: inputs disabled, drag disabled, remove disabled`                      | TODO(test) |
-| §3 `move` no-op when source maps to its own slot                   | —         | `move: identical-position drop is no-op`                                             | TODO(test) |
-| §3 `move` index adjustment when source precedes target             | —         | `move: source-before-target adjusts beforeIdx down by 1`                             | TODO(test) |
-| §3 `AddBlockMenu` appends; `SmallAddMenu` inserts at idx+1         | —         | `add menus: top appends, per-card adds below`                                        | TODO(test) |
-| §3 every change funnels through `onChange` (no in-place mutation)  | —         | `onChange: receives a new array reference each edit`                                 | TODO(test) |
-| §4 each kind exposes exactly the fields claimed in the table       | —         | per-kind: `editor exposes <fields>` (×9)                                             | TODO(test) |
-| §4 `extract.var_name` sanitiser strips non-alnum-underscore        | —         | `extract: var_name input strips illegal chars`                                       | TODO(test) |
-| §4 `questionnaire.unanswered_var` sanitiser                        | —         | `questionnaire: unanswered_var input strips illegal chars`                           | TODO(test) |
-| §5 native HTML5 DnD only (no library import)                       | —         | `imports: no react-dnd / hello-pangea/dnd`                                           | TODO(test) |
-| §5 drag crosses `for_each` boundary via `moveBlockInTree`          | `web/src/__tests__/moveBlockInTree.test.ts` | tree-move cases                                                       | done       |
-| §6 unknown `kind` renders placeholder without crash                | `web/src/__tests__/blocks.test.ts` | unknown-kind cases                                                            | done       |
+| Spec section / claim                                               | Test file                                   | Test name                                                       | Status     |
+| ------------------------------------------------------------------ | ------------------------------------------- | --------------------------------------------------------------- | ---------- |
+| §3 lock predicate (`isRunning \|\| done \|\| failed` → uneditable) | —                                           | `locked block: inputs disabled, drag disabled, remove disabled` | TODO(test) |
+| §3 `move` no-op when source maps to its own slot                   | —                                           | `move: identical-position drop is no-op`                        | TODO(test) |
+| §3 `move` index adjustment when source precedes target             | —                                           | `move: source-before-target adjusts beforeIdx down by 1`        | TODO(test) |
+| §3 `AddBlockMenu` appends; `SmallAddMenu` inserts at idx+1         | —                                           | `add menus: top appends, per-card adds below`                   | TODO(test) |
+| §3 every change funnels through `onChange` (no in-place mutation)  | —                                           | `onChange: receives a new array reference each edit`            | TODO(test) |
+| §4 each kind exposes exactly the fields claimed in the table       | —                                           | per-kind: `editor exposes <fields>` (×9)                        | TODO(test) |
+| §4 `extract.var_name` sanitiser strips non-alnum-underscore        | —                                           | `extract: var_name input strips illegal chars`                  | TODO(test) |
+| §4 `questionnaire.unanswered_var` sanitiser                        | —                                           | `questionnaire: unanswered_var input strips illegal chars`      | TODO(test) |
+| §5 native HTML5 DnD only (no library import)                       | —                                           | `imports: no react-dnd / hello-pangea/dnd`                      | TODO(test) |
+| §5 drag crosses `for_each` boundary via `moveBlockInTree`          | `web/src/__tests__/moveBlockInTree.test.ts` | tree-move cases                                                 | done       |
+| §6 unknown `kind` renders placeholder without crash                | `web/src/__tests__/blocks.test.ts`          | unknown-kind cases                                              | done       |
 
 ### Deliberately not tested
 

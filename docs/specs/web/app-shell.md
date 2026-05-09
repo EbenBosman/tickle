@@ -16,16 +16,16 @@
 
 ### Exports
 
-| Symbol                    | Kind     | Signature / shape                                                                                                                     | Stability |
-| ------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------- | --------- |
-| `App`                     | function | `() => JSX.Element` — default export. **No props.**                                                                                   | stable    |
-| `AggStats`                | —        | local type; not exported. Belongs in `domain/run-stats.ts`.                                                                           | drift     |
-| `StatsFooter`             | —        | local component; not exported.                                                                                                        | —         |
-| `Empty`                   | —        | local component; not exported.                                                                                                        | —         |
-| `RecentRuns`              | —        | local component; not exported.                                                                                                        | —         |
-| `runDuration`             | —        | imported from `web/src/state/parseSqliteUtc.ts` (sibling of `parseSqliteUtc` and `formatDuration`).                                   | stable    |
-| `formatTokens`            | —        | local helper; belongs in `ui/formatTokens.ts`.                                                                                        | drift     |
-| `CONTEXT_WINDOW_FALLBACK` | —        | local constant `32_768`. Used only when `/api/health` omits `context_window`.                                                         | —         |
+| Symbol                    | Kind     | Signature / shape                                                                                   | Stability |
+| ------------------------- | -------- | --------------------------------------------------------------------------------------------------- | --------- |
+| `App`                     | function | `() => JSX.Element` — default export. **No props.**                                                 | stable    |
+| `AggStats`                | —        | local type; not exported. Belongs in `domain/run-stats.ts`.                                         | drift     |
+| `StatsFooter`             | —        | local component; not exported.                                                                      | —         |
+| `Empty`                   | —        | local component; not exported.                                                                      | —         |
+| `RecentRuns`              | —        | local component; not exported.                                                                      | —         |
+| `runDuration`             | —        | imported from `web/src/state/parseSqliteUtc.ts` (sibling of `parseSqliteUtc` and `formatDuration`). | stable    |
+| `formatTokens`            | —        | local helper; belongs in `ui/formatTokens.ts`.                                                      | drift     |
+| `CONTEXT_WINDOW_FALLBACK` | —        | local constant `32_768`. Used only when `/api/health` omits `context_window`.                       | —         |
 
 ### Consumed HTTP / SSE surface
 
@@ -39,15 +39,15 @@
 
 ### Errors surfaced
 
-| Source                                  | Surface                                                                              |
-| --------------------------------------- | ------------------------------------------------------------------------------------ |
-| `api.createTask` reject                 | `useUiPrompts().toast.error(...)`. No state change.                                  |
-| `api.deleteTask` reject                 | `useUiPrompts().toast.error(...)`. List not refreshed (stale UI).                    |
-| `api.deleteRun` reject (`RecentRuns`)   | `useUiPrompts().toast.error(...)`.                                                   |
+| Source                                  | Surface                                                                                                                |
+| --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `api.createTask` reject                 | `useUiPrompts().toast.error(...)`. No state change.                                                                    |
+| `api.deleteTask` reject                 | `useUiPrompts().toast.error(...)`. List not refreshed (stale UI).                                                      |
+| `api.deleteRun` reject (`RecentRuns`)   | `useUiPrompts().toast.error(...)`.                                                                                     |
 | `api.clearTaskRuns` 409 (active runs)   | `useUiPrompts().confirm({ destructive })` modal; on confirm retries with `force=true`. Second failure → `toast.error`. |
-| `api.listTasks` / `api.listRuns` reject | `console.error`; UI stays at last-known-good state.                                  |
-| `/api/health` reject                    | Silently swallowed (`.catch(() => {})`); model/context defaults retained.            |
-| `api.startRun` reject                   | **Unhandled** — promise rejection escapes. ⚠️ Drift: should `alert` like the others. |
+| `api.listTasks` / `api.listRuns` reject | `console.error`; UI stays at last-known-good state.                                                                    |
+| `/api/health` reject                    | Silently swallowed (`.catch(() => {})`); model/context defaults retained.                                              |
+| `api.startRun` reject                   | **Unhandled** — promise rejection escapes. ⚠️ Drift: should `alert` like the others.                                   |
 
 ### Routing
 

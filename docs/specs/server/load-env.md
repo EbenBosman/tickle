@@ -62,13 +62,13 @@ The loader never throws. ENOENT silently skips to the next candidate path. Other
 
 ## 5. How tested
 
-| Spec section / claim                                                                            | Test file | Test name | Status     |
-| ----------------------------------------------------------------------------------------------- | --------- | --------- | ---------- |
-| §3 I1 — load-order: `loadEnv` runs before `llm.ts` captures constants                           | —         | —         | TODO(test) |
-| §3 I2 — existing `process.env[key]` is not overwritten by `.env`                                | —         | —         | TODO(test) |
-| §3 I3 — missing `.env` is a graceful no-op (no throw)                                           | —         | —         | TODO(test) |
-| §3 I4 — `.env` is resolved via `import.meta.url`, walking `server/.env` then repo-root `.env`    | `__tests__/loadEnv.test.ts` | candidate-walk cases | done       |
-| §3 I5 — outer matching quotes stripped; comments and blanks skipped; `=` inside value preserved | —         | —         | TODO(test) |
+| Spec section / claim                                                                            | Test file                   | Test name             | Status     |
+| ----------------------------------------------------------------------------------------------- | --------------------------- | --------------------- | ---------- |
+| §3 I1 — load-order: `loadEnv` runs before `llm.ts` captures constants                           | —                           | —                     | TODO(test) |
+| §3 I2 — existing `process.env[key]` is not overwritten by `.env`                                | —                           | —                     | TODO(test) |
+| §3 I3 — missing `.env` is a graceful no-op (no throw)                                           | —                           | —                     | TODO(test) |
+| §3 I4 — `.env` is resolved via `import.meta.url`, walking `server/.env` then repo-root `.env`   | `__tests__/loadEnv.test.ts` | candidate-walk cases  | done       |
+| §3 I5 — outer matching quotes stripped; comments and blanks skipped; `=` inside value preserved | —                           | —                     | TODO(test) |
 | §6 — non-ENOENT IO errors logged and skipped (no crash)                                         | `__tests__/loadEnv.test.ts` | EACCES / EISDIR cases | done       |
 
 ### Deliberately not tested

@@ -75,8 +75,6 @@ Issues surfaced while specifying the modules. Each is captured in detail in the 
 
 ### Likely bugs
 
-- 🟡 **No SSE auto-reconnect.** `EventSource.onerror` closes; no `Last-Event-ID`. Reconnect after network blip would either fail or duplicate entries (no idempotent identity).
-- 🟡 **`RunView` entries unbounded** — at hundreds of events per run, no virtualisation. Memory grows linearly.
 
 ### Misplaced code (resolves with refactor)
 
