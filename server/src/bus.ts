@@ -7,10 +7,19 @@ type Subscriber = (
 const subs = new Map<number, Set<Subscriber>>();
 
 export function subscribe(runId: number, fn: Subscriber): () => void {
-  if (!subs.has(runId)) subs.set(runId, new Set());
-  subs.get(runId)!.add(fn);
+  let set = subs.get(runId);
+  if (!set) {
+    set = new Set();
+    subs.set(runId, set);
+  }
+  set.add(fn);
   return () => {
-    subs.get(runId)?.delete(fn);
+    const current = subs.get(runId);
+    if (!current) return;
+    current.delete(fn);
+    // GC the empty Set so a long-lived process doesn't accumulate one
+    // entry per run forever after every subscriber leaves.
+    if (current.size === 0) subs.delete(runId);
   };
 }
 
@@ -31,4 +40,9 @@ export function publish(
 
 export function endTopic(runId: number) {
   subs.delete(runId);
+}
+
+/** Test/diagnostics: number of distinct runs with at least one subscriber. */
+export function topicCount(): number {
+  return subs.size;
 }

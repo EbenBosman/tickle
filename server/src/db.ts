@@ -135,6 +135,8 @@ export type Step = {
     | "remember"
     | "error"
     | "final"
+    | "page_state"
+    | "stats"
     | "messages_export";
   payload: string;
   screenshot_path: string | null;
@@ -175,21 +177,33 @@ export type Lesson = {
   created_at: string;
 };
 
+const insertLessonStmt = db.prepare(
+  "INSERT INTO lessons (run_id, block_id, lesson, situation) VALUES (?, ?, ?, ?)",
+);
+const insertLessonFtsStmt = db.prepare(
+  "INSERT INTO lessons_fts (rowid, lesson, situation) VALUES (?, ?, ?)",
+);
+
 export function addLesson(
   runId: number | null,
   blockId: string | null,
   lesson: string,
   situation: string | null,
 ): void {
-  const row = db
-    .prepare("INSERT INTO lessons (run_id, block_id, lesson, situation) VALUES (?, ?, ?, ?)")
-    .run(runId, blockId, lesson, situation) as { lastInsertRowid: number };
-  const rowid = row.lastInsertRowid;
-  db.prepare("INSERT INTO lessons_fts (rowid, lesson, situation) VALUES (?, ?, ?)").run(
-    rowid,
-    lesson,
-    situation ?? "",
-  );
+  // Wrap both writes in a single transaction so the FTS5 mirror table can
+  // never desync from the lessons table on a crash between the two inserts.
+  // BEGIN/COMMIT auto-rolls back if anything throws.
+  db.exec("BEGIN");
+  try {
+    const row = insertLessonStmt.run(runId, blockId, lesson, situation) as {
+      lastInsertRowid: number;
+    };
+    insertLessonFtsStmt.run(row.lastInsertRowid, lesson, situation ?? "");
+    db.exec("COMMIT");
+  } catch (e) {
+    db.exec("ROLLBACK");
+    throw e;
+  }
 }
 
 export function searchLessons(query: string, limit = 5): Lesson[] {

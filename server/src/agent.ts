@@ -176,7 +176,10 @@ type ExecCtx = {
       | "block_start"
       | "block_end"
       | "var_set"
-      | "remember",
+      | "remember"
+      | "page_state"
+      | "stats"
+      | "messages_export",
     payload: unknown,
     screenshotPath?: string,
   ) => void;
@@ -190,7 +193,7 @@ export async function runAgent(
   taskId: number,
   instruction: string,
   stepsJson: string | null,
-  emit: (event: AgentEvent) => void,
+  externalEmit: (event: AgentEvent) => void,
 ): Promise<{ status: "done" | "error" | "cancelled"; result?: string; error?: string }> {
   const session = new Session(runId);
   const client = newLlmClient();
@@ -237,11 +240,26 @@ export async function runAgent(
       | "block_start"
       | "block_end"
       | "var_set"
-      | "remember",
+      | "remember"
+      | "page_state"
+      | "stats"
+      | "messages_export",
     payload: unknown,
     screenshotPath?: string,
   ) => {
     insertStep.run(runId, stepIdx++, kind, JSON.stringify(payload), screenshotPath ?? null);
+  };
+
+  // Wrap the externally-supplied emit so `page_state` and `stats` events are
+  // auto-persisted to the steps table. Without this, SSE clients reconnecting
+  // via replay would never see them — they'd have been bus-only. Ordered so
+  // the DB row exists before subscribers learn about the event, which keeps
+  // the replay-then-subscribe transition consistent for the route.
+  const emit = (event: AgentEvent) => {
+    if (event.kind === "page_state" || event.kind === "stats") {
+      insertStep.run(runId, stepIdx++, event.kind, JSON.stringify(event), null);
+    }
+    externalEmit(event);
   };
 
   trace("run.start", { runId, taskId, instruction: instruction.slice(0, 200) });
@@ -1517,15 +1535,11 @@ async function runClaudeRescue(
     rescue_messages: rescueMessages,
   };
 
-  const insertStep = db.prepare(
-    "INSERT INTO steps (run_id, idx, kind, payload, screenshot_path) VALUES (?, ?, ?, ?, ?)",
-  );
-  const stepIdx = (
-    db
-      .prepare("SELECT COALESCE(MAX(idx), -1) + 1 AS next FROM steps WHERE run_id = ?")
-      .get(ctx.runId) as { next: number }
-  ).next;
-  insertStep.run(ctx.runId, stepIdx, "messages_export", JSON.stringify(exportPayload), null);
+  // Use the shared in-memory step counter via ctx.persist so we don't race
+  // with the main run loop's incrementing stepIdx. The previous direct
+  // INSERT computed `MAX(idx)+1` from SQLite, which could collide if the
+  // main loop emitted between SELECT and INSERT.
+  ctx.persist("messages_export", exportPayload);
 
   trace("rescue.end", { runId: ctx.runId, blockId: block.id, status: rescueOutcome.status });
 

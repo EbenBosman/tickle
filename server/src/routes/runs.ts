@@ -42,9 +42,9 @@ export async function runsRoutes(app: FastifyInstance) {
     // POST while another run is `running` would race on the shared tab.
     // The startup sweep in db.ts clears stale `running` rows from previous
     // process lifetimes, so this query reflects only currently live runs.
-    const active = db.prepare("SELECT id, task_id FROM runs WHERE status = 'running' LIMIT 1").get() as
-      | { id: number; task_id: number }
-      | undefined;
+    const active = db
+      .prepare("SELECT id, task_id FROM runs WHERE status = 'running' LIMIT 1")
+      .get() as { id: number; task_id: number } | undefined;
     if (active) {
       return reply.code(409).send({
         error: `another run is in progress (run ${active.id}, task ${active.task_id}) — cancel it first`,
@@ -277,6 +277,24 @@ export async function runsRoutes(app: FastifyInstance) {
       reply.raw.write(`data: ${JSON.stringify(event)}\n\n`);
     };
 
+    // Subscribe BEFORE the DB replay read to close the race window where a
+    // bus event published between the SELECT and the .subscribe() call
+    // would otherwise be dropped. While replay is in progress, live events
+    // are buffered. Once replay (plus a tail re-read) finishes, the
+    // persistable subset of the buffer is dropped (covered by replay) and
+    // live forwarding starts.
+    type LiveEvent = Parameters<Parameters<typeof subscribe>[1]>[0];
+    const liveBuffer: LiveEvent[] = [];
+    let live = false;
+    const unsubscribe = subscribe(runId, (event) => {
+      if (live) send(event);
+      else liveBuffer.push(event);
+    });
+
+    req.raw.on("close", () => {
+      unsubscribe();
+    });
+
     // Replay any steps already persisted (so a late connection sees the full history).
     const existing = db
       .prepare("SELECT * FROM steps WHERE run_id = ? ORDER BY idx ASC")
@@ -284,10 +302,24 @@ export async function runsRoutes(app: FastifyInstance) {
     for (const s of existing) {
       send({ replay: true, step: s });
     }
+    let lastReplayedIdx = existing.length > 0 ? existing[existing.length - 1].idx : -1;
+
+    // Tail re-read: catch anything persisted between subscribe and the
+    // primary read above. Persist runs synchronously inside the agent, so
+    // any live event in our buffer of a persistable kind is by now in the
+    // DB; reading idx > lastReplayedIdx surfaces it.
+    const tail = db
+      .prepare("SELECT * FROM steps WHERE run_id = ? AND idx > ? ORDER BY idx ASC")
+      .all(runId, lastReplayedIdx) as Step[];
+    for (const s of tail) {
+      send({ replay: true, step: s });
+      lastReplayedIdx = s.idx;
+    }
 
     const run = db.prepare("SELECT * FROM runs WHERE id = ?").get(runId) as Run | undefined;
     if (run && run.status !== "running") {
       send({ kind: "end", status: run.status, result: run.result, error: run.error });
+      unsubscribe();
       reply.raw.end();
       return;
     }
@@ -300,11 +332,29 @@ export async function runsRoutes(app: FastifyInstance) {
       send({ kind: "paused", reason: info?.reason, auto: info?.auto });
     }
 
-    const unsubscribe = subscribe(runId, (event) => send(event));
-
-    req.raw.on("close", () => {
-      unsubscribe();
-    });
+    // Drain the buffer. Persistable kinds are already in the replay/tail
+    // results; only the live-only kinds (paused/resumed/end) need
+    // forwarding. paused/resumed in-buffer are stale once we've already
+    // sent a synthetic paused (above), so it's safe to drop them too.
+    const PERSISTABLE_KINDS = new Set([
+      "thought",
+      "tool_call",
+      "tool_result",
+      "block_start",
+      "block_end",
+      "var_set",
+      "remember",
+      "error",
+      "final",
+      "page_state",
+      "stats",
+      "messages_export",
+    ]);
+    for (const ev of liveBuffer) {
+      if (!PERSISTABLE_KINDS.has(ev.kind)) send(ev);
+    }
+    liveBuffer.length = 0;
+    live = true;
 
     // Keep the handler alive
     return reply;

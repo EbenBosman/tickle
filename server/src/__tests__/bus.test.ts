@@ -1,12 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { endTopic, publish, subscribe } from "../bus.ts";
+import { endTopic, publish, subscribe, topicCount } from "../bus.ts";
 
 // docs/specs/server/event-bus.md
 //
 // bus.ts is a Map<runId, Set<Subscriber>>. Tests use unique ids and
-// endTopic() in afterEach. We do NOT enforce the empty-Set-leak fix or
-// the replay/subscribe race fix here — both are open drift in the spec
-// and Phase 4-5 work; their tests will be added when the fixes land.
+// endTopic() in afterEach. The empty-Set GC is exercised explicitly
+// below via topicCount().
 
 let nextId = 1;
 const used: number[] = [];
@@ -91,6 +90,39 @@ describe("event bus — per-run-id isolation", () => {
     publish(a, ev("thought"));
     expect(fnA).toHaveBeenCalledTimes(1);
     expect(fnB).not.toHaveBeenCalled();
+  });
+});
+
+describe("event bus — empty-Set GC after last unsubscribe", () => {
+  it("the Set entry is removed once the last subscriber leaves", () => {
+    const id = freshId();
+    const before = topicCount();
+    const unsub = subscribe(id, vi.fn());
+    expect(topicCount()).toBe(before + 1);
+    unsub();
+    expect(topicCount()).toBe(before);
+  });
+
+  it("with multiple subscribers, the Set is only GC'd when ALL leave", () => {
+    const id = freshId();
+    const before = topicCount();
+    const u1 = subscribe(id, vi.fn());
+    const u2 = subscribe(id, vi.fn());
+    expect(topicCount()).toBe(before + 1);
+    u1();
+    expect(topicCount()).toBe(before + 1); // still subs left
+    u2();
+    expect(topicCount()).toBe(before); // now GC'd
+  });
+
+  it("re-subscribing after GC creates a fresh Set (no stale references)", () => {
+    const id = freshId();
+    const u1 = subscribe(id, vi.fn());
+    u1(); // GC
+    const fn = vi.fn();
+    subscribe(id, fn);
+    publish(id, ev("thought"));
+    expect(fn).toHaveBeenCalledTimes(1);
   });
 });
 

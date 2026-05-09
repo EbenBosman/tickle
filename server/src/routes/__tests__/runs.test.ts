@@ -263,9 +263,7 @@ describe("POST /api/tasks/:id/run", () => {
 
 describe("runs.status CHECK constraint", () => {
   it("rejects an INSERT with an invalid status", async () => {
-    const info = db
-      .prepare("INSERT INTO tasks (name, instruction) VALUES (?, ?)")
-      .run("x", "y");
+    const info = db.prepare("INSERT INTO tasks (name, instruction) VALUES (?, ?)").run("x", "y");
     const taskId = Number(info.lastInsertRowid);
     expect(() =>
       db.prepare("INSERT INTO runs (task_id, status) VALUES (?, ?)").run(taskId, "garbage"),
@@ -273,9 +271,7 @@ describe("runs.status CHECK constraint", () => {
   });
 
   it("rejects an UPDATE that sets an invalid status", async () => {
-    const info = db
-      .prepare("INSERT INTO tasks (name, instruction) VALUES (?, ?)")
-      .run("x", "y");
+    const info = db.prepare("INSERT INTO tasks (name, instruction) VALUES (?, ?)").run("x", "y");
     const taskId = Number(info.lastInsertRowid);
     const runInfo = db
       .prepare("INSERT INTO runs (task_id, status) VALUES (?, 'running')")
@@ -287,9 +283,7 @@ describe("runs.status CHECK constraint", () => {
   });
 
   it("accepts each of the four valid values", async () => {
-    const info = db
-      .prepare("INSERT INTO tasks (name, instruction) VALUES (?, ?)")
-      .run("x", "y");
+    const info = db.prepare("INSERT INTO tasks (name, instruction) VALUES (?, ?)").run("x", "y");
     const taskId = Number(info.lastInsertRowid);
     for (const s of ["running", "done", "error", "cancelled"]) {
       expect(() =>

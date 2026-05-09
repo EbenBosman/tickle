@@ -179,7 +179,7 @@ export async function compileRoutes(app: FastifyInstance) {
 
     let rawBlocks: unknown = parsed;
     if (parsed && typeof parsed === "object" && "blocks" in parsed) {
-      rawBlocks = (parsed).blocks;
+      rawBlocks = parsed.blocks;
     }
     if (!Array.isArray(rawBlocks)) {
       return reply.code(502).send({

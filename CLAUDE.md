@@ -105,7 +105,7 @@ SQLite at `server/data/tickle.db` via `node:sqlite` (built into Node ≥22.5; st
 
 - `tasks(id, name, instruction, steps, created_at)` — `steps` is JSON array of blocks. Lazy migration: tasks with `steps IS NULL` are populated from `instruction` on first GET (`ensureSteps` in `server/src/routes/tasks.ts`).
 - `runs(id, task_id, status, result, error, started_at, finished_at)` — `status` ∈ `running | done | error | cancelled`.
-- `steps(id, run_id, idx, kind, payload, screenshot_path, created_at)` — persisted event log. `kind` ∈ `thought | tool_call | tool_result | block_start | block_end | var_set | remember | error | final | messages_export`. Used for live SSE replay. Note: `page_state`, `stats`, `paused`, `resumed`, `end` are emitted live to the bus only and not persisted — clients reconnecting via replay will not see them.
+- `steps(id, run_id, idx, kind, payload, screenshot_path, created_at)` — persisted event log. `kind` ∈ `thought | tool_call | tool_result | block_start | block_end | var_set | remember | error | final | page_state | stats | messages_export`. Used for live SSE replay. Note: `paused`, `resumed`, `end` are emitted live to the bus only and not persisted — they're reconstructable from the run row + the in-process pause registry, so a reconnecting client doesn't lose state.
 - `settings(key, value)` — small KV table for the rescue toggles and model choice; seeded with defaults on first run.
 - `lessons(id, run_id, block_id, lesson, situation, created_at)` + `lessons_fts` virtual table — see Lessons section above.
 

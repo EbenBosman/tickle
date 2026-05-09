@@ -33,6 +33,8 @@ export type Step = {
     | "remember"
     | "error"
     | "final"
+    | "page_state"
+    | "stats"
     | "messages_export";
   payload: string;
   screenshot_path: string | null;

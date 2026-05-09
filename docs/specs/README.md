@@ -75,8 +75,6 @@ Issues surfaced while specifying the modules. Each is captured in detail in the 
 
 ### Likely bugs
 
-- 🟠 **`page_state` and `stats` events not persisted.** CLAUDE.md "Storage" claims all events get a `steps` row; in fact `page_state` and `stats` are emitted live only. SSE clients reconnecting via replay miss them entirely.
-- 🟠 **`runClaudeRescue` bypasses the in-memory step counter.** Re-prepares its own INSERT and computes `stepIdx` via `SELECT MAX(idx)+1`. Latent race with the main run if any concurrency emerges.
 - 🟠 **`CompileFromText` preview lacks danger affordances.** The "human-review-before-execute" injection defence per `http-compile.md` §6 is load-bearing, but the preview is a plain `<ol>` of `kind` + summary — no off-host `navigate` banner, no credential-pattern flag. Makes review a rubber-stamp.
 - 🟠 **`statusMap`/`runningBlockId` not propagated into `for_each.body`** — inner blocks never show running/done state during a run.
 - 🟠 **`goal.max_steps`** in the schema but no UI input — silent server-only field.
@@ -86,7 +84,6 @@ Issues surfaced while specifying the modules. Each is captured in detail in the 
 - 🟡 **`web/src/blocks.ts::newBlock`** falls back to non-UUID IDs when `crypto.randomUUID` unavailable. Server validation tolerates it; equality checks across run boundaries don't.
 - 🟡 **`RunView` entries unbounded** — at hundreds of events per run, no virtualisation. Memory grows linearly.
 - 🟡 **Drag-drop cannot cross `for_each` boundaries** — separate `dragId` state per recursion level.
-- 🟠 **`addLesson` non-transactional** — `lessons` + `lessons_fts` writes can desync on crash between them.
 
 ### Misplaced code (resolves with refactor)
 
@@ -98,11 +95,6 @@ Issues surfaced while specifying the modules. Each is captured in detail in the 
 - 🟠 **`VALID_MODELS` duplicated** — `routes/settings.ts` and `web/src/components/SettingsPage.tsx`.
 - 🟠 **Two diverging text walkers** in `tools.ts` (already listed under bugs) — same root cause as the duplications above.
 - 🟠 **EventSource lives in `RunView.tsx`, not in a hook.** `_LAYERS.md` calls for `state/useRunStream.ts`.
-
-### Concurrency / consistency
-
-- 🟠 **`bus.ts` replay/subscribe race.** Window between SQLite replay read and live subscriber registration can drop events. Capture a cursor before replay or buffer during replay.
-- 🟡 **`bus.ts` empty `Set` leak** when all subscribers unsubscribe before `endTopic`.
 
 ### Process / migration
 
@@ -142,3 +134,8 @@ Items fixed since the original Phase 2 pass. Each links to its regression test.
 - **`Math.min(NaN, 200)` lets bad `?limit=` through.** `/api/lessons` now coerces `?offset=` and `?limit=` to finite positive numbers; non-numeric / negative / zero `limit` falls back to the default 50; `limit > 200` clamps to 200. Regression: `server/src/routes/__tests__/settings.test.ts`.
 - **`/api/blocks/compile` no input length cap.** New `MAX_COMPILE_PROMPT_CHARS = 8000` cap; over-cap requests return 413 without invoking the LLM. Regression: `server/src/routes/__tests__/compile.test.ts`.
 - **`runs.status` no CHECK constraint.** New table-level CHECK on fresh DBs plus matching INSERT/UPDATE triggers (`runs_status_check_*`) to cover existing DBs where SQLite can't ALTER the constraint in. Regression: `server/src/routes/__tests__/runs.test.ts`.
+- **`addLesson` non-transactional.** The two writes (`lessons` + `lessons_fts`) now run inside a `BEGIN/COMMIT` block with `ROLLBACK` on throw, so a crash between them can't leave the FTS mirror desynced. Regression: `server/src/__tests__/db.lessons.test.ts`.
+- **`bus.ts` empty `Set` leak.** The unsubscribe closure now `subs.delete(runId)` once `set.size === 0`, so a long-lived process doesn't accumulate one entry per run after subscribers leave. New `topicCount()` test hook surfaces the GC. Regression: `server/src/__tests__/bus.test.ts`.
+- **`bus.ts` replay/subscribe race (route-level fix).** `routes/runs.ts /stream` now subscribes BEFORE the DB replay read and buffers live events. After replay, a tail-read of `steps WHERE idx > lastReplayedIdx` catches anything persisted during the race window; the buffer is then drained for live-only kinds (`paused`/`resumed`) and discarded for persistable kinds (already covered by tail). Persist-runs-before-emit ordering inside `runAgent` keeps the invariant that any bus event of a persistable kind is already in the DB by the time a subscriber sees it.
+- **`runClaudeRescue` step-counter race.** Replaced the inline `MAX(idx)+1` SELECT + INSERT with `ctx.persist("messages_export", payload)`, which uses the same in-memory `stepIdx` as the main run loop. No more SELECT/INSERT race window with concurrent emits.
+- **`page_state` / `stats` events not persisted.** Both kinds are now added to `Step["kind"]` and auto-persisted via a wrapper around the `emit` callback in `runAgent`. SSE clients reconnecting via replay see the full event history, not just the persistable subset minus these two. CLAUDE.md Storage section updated to reflect the new `kind` enumeration.
