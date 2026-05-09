@@ -19,23 +19,23 @@ If any of these fail, **stop and report**. Do not proceed.
 
 When breaking a server module, sort code into these layers (top depends on bottom; never the reverse):
 
-| Layer            | What lives here                                  | Example folder            |
-|------------------|--------------------------------------------------|---------------------------|
-| `domain/`        | Pure types, value objects, errors, invariants    | `server/src/domain/`      |
-| `application/`   | Use-cases (orchestrate domain + infra)           | `server/src/application/` |
-| `infrastructure/`| Browser, LLM client, DB, filesystem, network     | `server/src/infrastructure/` |
-| `interface/`     | HTTP routes, SSE handlers, CLI                   | `server/src/interface/`   |
+| Layer             | What lives here                               | Example folder               |
+| ----------------- | --------------------------------------------- | ---------------------------- |
+| `domain/`         | Pure types, value objects, errors, invariants | `server/src/domain/`         |
+| `application/`    | Use-cases (orchestrate domain + infra)        | `server/src/application/`    |
+| `infrastructure/` | Browser, LLM client, DB, filesystem, network  | `server/src/infrastructure/` |
+| `interface/`      | HTTP routes, SSE handlers, CLI                | `server/src/interface/`      |
 
 A file in `domain/` must not import from any other layer. A file in `infrastructure/` must not import from `interface/`. Enforce with directory-aware tests (`no-restricted-imports`).
 
 ## Frontend targets (web)
 
-| Layer       | What lives here                                | Example folder         |
-|-------------|------------------------------------------------|------------------------|
-| `domain/`   | Pure types shared with server (or duplicated intentionally and reconciled in tests) | `web/src/domain/` |
-| `state/`    | Stores, hooks, derived selectors               | `web/src/state/`       |
-| `ui/`       | Pure presentational components                 | `web/src/ui/`          |
-| `features/` | Feature-folders combining state + ui           | `web/src/features/`    |
+| Layer       | What lives here                                                                     | Example folder      |
+| ----------- | ----------------------------------------------------------------------------------- | ------------------- |
+| `domain/`   | Pure types shared with server (or duplicated intentionally and reconciled in tests) | `web/src/domain/`   |
+| `state/`    | Stores, hooks, derived selectors                                                    | `web/src/state/`    |
+| `ui/`       | Pure presentational components                                                      | `web/src/ui/`       |
+| `features/` | Feature-folders combining state + ui                                                | `web/src/features/` |
 
 ## Process
 
@@ -53,6 +53,7 @@ A file in `domain/` must not import from any other layer. A file in `infrastruct
 ## Stop conditions
 
 Abort and report if:
+
 - A test goes red and you can't make it green within one move (the move was wrong — revert).
 - The plan needs to grow beyond what was approved (re-propose, don't sneak it in).
 - You discover the spec was wrong (stop, fix the spec, re-confirm).

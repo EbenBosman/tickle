@@ -61,7 +61,7 @@ export async function takeSnapshot(
       const isVisible = (el: Element): boolean => {
         const rect = (el as HTMLElement).getBoundingClientRect();
         if (rect.width === 0 || rect.height === 0) return false;
-        const s = window.getComputedStyle(el as HTMLElement);
+        const s = window.getComputedStyle(el);
         if (s.display === "none") return false;
         if (s.visibility === "hidden") return false;
         if (parseFloat(s.opacity || "1") === 0) return false;
@@ -133,7 +133,7 @@ export async function takeSnapshot(
         // alt text on contained image
         const img = el.querySelector("img[alt]");
         if (img) {
-          const alt = img.getAttribute("alt") || "";
+          const alt = img.getAttribute("alt") ?? "";
           if (alt.trim()) return alt.trim();
         }
 

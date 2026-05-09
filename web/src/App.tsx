@@ -42,8 +42,10 @@ export default function App() {
             setServerContextWindow(j.context_window);
           }
         })
-        .catch(() => {});
-    fetchHealth();
+        .catch(() => {
+          // ignore — health endpoint may be momentarily unavailable
+        });
+    void fetchHealth();
     // Re-fetch when the tab regains focus (catches server restarts)
     // and on a slow poll so the displayed model stays current.
     const onFocus = () => fetchHealth();
@@ -109,9 +111,7 @@ export default function App() {
         <button
           onClick={() => setShowSettings((v) => !v)}
           className={`rounded-md px-3 py-1.5 text-xs transition-colors ${
-            showSettings
-              ? "bg-zinc-700 text-zinc-100"
-              : "text-zinc-500 hover:text-zinc-200"
+            showSettings ? "bg-zinc-700 text-zinc-100" : "text-zinc-500 hover:text-zinc-200"
           }`}
         >
           Settings
@@ -120,10 +120,7 @@ export default function App() {
 
       {showSettings && (
         <div className="absolute inset-0 top-[46px] z-10 flex justify-end">
-          <div
-            className="flex-1 bg-black/40"
-            onClick={() => setShowSettings(false)}
-          />
+          <div className="flex-1 bg-black/40" onClick={() => setShowSettings(false)} />
           <div className="w-[480px] overflow-y-auto border-l border-zinc-800 bg-zinc-950">
             <SettingsPage onClose={() => setShowSettings(false)} />
           </div>
@@ -296,7 +293,9 @@ function RecentRuns({ taskId, onOpen }: { taskId: number; onOpen: (id: number) =
   const refresh = () => api.listRuns(taskId).then(setRuns).catch(console.error);
 
   useEffect(() => {
-    refresh();
+    void refresh();
+    // refresh is recreated each render; we only want to re-run on taskId change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [taskId]);
 
   const deleteOne = async (id: number) => {
@@ -338,10 +337,7 @@ function RecentRuns({ taskId, onOpen }: { taskId: number; onOpen: (id: number) =
       <div className="flex items-center justify-between">
         <div className="text-xs uppercase tracking-wide text-zinc-500">Recent runs</div>
         {runs.length > 0 && (
-          <button
-            onClick={clearAll}
-            className="text-xs text-zinc-500 hover:text-red-400"
-          >
+          <button onClick={clearAll} className="text-xs text-zinc-500 hover:text-red-400">
             Clear all
           </button>
         )}
@@ -377,4 +373,3 @@ function RecentRuns({ taskId, onOpen }: { taskId: number; onOpen: (id: number) =
     </div>
   );
 }
-

@@ -16,18 +16,18 @@ This module is the only seam through which the outside world starts, observes, c
 
 ### HTTP / SSE surface
 
-| Method | Path                                | Auth | Purpose                                                              |
-|--------|-------------------------------------|------|----------------------------------------------------------------------|
-| `POST` | `/api/tasks/:id/run`                | none | Start a new run for a task. Returns `run_id` immediately.            |
-| `GET`  | `/api/tasks/:taskId/runs`           | none | List runs for a task (newest first), each annotated with `is_paused`.|
-| `DELETE` | `/api/tasks/:taskId/runs`         | none | Bulk-delete all runs for a task. Query: `force`, `reset_ids`.        |
-| `GET`  | `/api/runs/:id`                     | none | Single run + ordered `steps[]` + `pause_info`.                       |
-| `POST` | `/api/runs/:id/cancel`              | none | Cancel a live run, or force-clear a zombie.                          |
-| `POST` | `/api/runs/:id/pause`               | none | Pause an active run (user-initiated).                                |
-| `POST` | `/api/runs/:id/resume`              | none | Resume a paused run.                                                 |
-| `DELETE` | `/api/runs/:id`                   | none | Delete a finalized run + its screenshot files.                       |
-| `GET`  | `/api/runs/:id/stream`              | none | SSE: replay persisted steps then subscribe to live events.           |
-| `GET`  | `/screenshots/*`                    | none | Static PNG file serving from `screenshots/<rest>`.                   |
+| Method   | Path                      | Auth | Purpose                                                               |
+| -------- | ------------------------- | ---- | --------------------------------------------------------------------- |
+| `POST`   | `/api/tasks/:id/run`      | none | Start a new run for a task. Returns `run_id` immediately.             |
+| `GET`    | `/api/tasks/:taskId/runs` | none | List runs for a task (newest first), each annotated with `is_paused`. |
+| `DELETE` | `/api/tasks/:taskId/runs` | none | Bulk-delete all runs for a task. Query: `force`, `reset_ids`.         |
+| `GET`    | `/api/runs/:id`           | none | Single run + ordered `steps[]` + `pause_info`.                        |
+| `POST`   | `/api/runs/:id/cancel`    | none | Cancel a live run, or force-clear a zombie.                           |
+| `POST`   | `/api/runs/:id/pause`     | none | Pause an active run (user-initiated).                                 |
+| `POST`   | `/api/runs/:id/resume`    | none | Resume a paused run.                                                  |
+| `DELETE` | `/api/runs/:id`           | none | Delete a finalized run + its screenshot files.                        |
+| `GET`    | `/api/runs/:id/stream`    | none | SSE: replay persisted steps then subscribe to live events.            |
+| `GET`    | `/screenshots/*`          | none | Static PNG file serving from `screenshots/<rest>`.                    |
 
 > ⚠️ **Security note.** All endpoints are unauthenticated. Fastify is bound to `127.0.0.1` (`server/src/index.ts`), so reachable only locally. CORS is now restricted to a localhost dev allowlist (`server/src/cors.ts`); previously `origin: true` left a DNS-rebinding window. Acceptable for the local-only design; revisit before any non-loopback bind.
 
@@ -74,11 +74,11 @@ This module is the only seam through which the outside world starts, observes, c
 
 Bulk-clear all runs for a task.
 
-- **Query params:** `force` (`"true"` | `"1"` allows clearing while runs are active), `reset_ids` (`"true"` | `"1"` resets the `runs` autoincrement *only* if zero runs remain in the entire DB after the delete).
+- **Query params:** `force` (`"true"` | `"1"` allows clearing while runs are active), `reset_ids` (`"true"` | `"1"` resets the `runs` autoincrement _only_ if zero runs remain in the entire DB after the delete).
 - **Response 200:** `{ ok: true, deleted: number, forced: number, screenshots_removed: number }`.
 - **Response 409:** `{ error: "<n> run(s) still active", active: number }` if any run is `running` and `force` is not set. With `force`, active runs are best-effort `requestCancel`'d (return value ignored), then their rows are forced to `cancelled`.
 
-> ⚠️ **Drift — `reset_ids` global side effect.** The route resets `sqlite_sequence` for the `runs` table only when `COUNT(*) FROM runs == 0`, but a successful reset affects future `runs.id` values *globally*. The guard makes it safe in practice; the parameter name (`reset_ids`) does not telegraph that "global" condition.
+> ⚠️ **Drift — `reset_ids` global side effect.** The route resets `sqlite_sequence` for the `runs` table only when `COUNT(*) FROM runs == 0`, but a successful reset affects future `runs.id` values _globally_. The guard makes it safe in practice; the parameter name (`reset_ids`) does not telegraph that "global" condition.
 
 #### `GET /api/tasks/:taskId/runs` and `GET /api/runs/:id`
 
@@ -108,24 +108,24 @@ Bulk-clear all runs for a task.
 
 ### Errors (summary)
 
-| HTTP | Body                                                               | Triggered by                                                  |
-|------|--------------------------------------------------------------------|---------------------------------------------------------------|
-| 404  | `{ error: "task not found" }`                                      | `POST /api/tasks/:id/run` with unknown task                   |
-| 404  | `{ error: "run not found" }`                                       | `POST /cancel`, `DELETE /api/runs/:id` with unknown id        |
-| 404  | `{ error: "not found" }`                                           | `GET /api/runs/:id` with unknown id                           |
-| 404  | (empty body)                                                       | `/screenshots/*` missing or non-`.png`                        |
-| 409  | `{ error: "run is already <status>" }`                             | `POST /cancel` on a non-`running` row with no live handler    |
-| 409  | `{ error: "run not active or already paused" }`                    | `POST /pause` when `pause()` returns false                    |
-| 409  | `{ error: "run not active or not paused" }`                        | `POST /resume` when `resume()` returns false                  |
-| 409  | `{ error: "run is still active — cancel it first, then delete" }`  | `DELETE /api/runs/:id` while `status='running'`               |
-| 409  | `{ error: "<n> run(s) still active", active: <n> }`                | `DELETE /api/tasks/:taskId/runs` without `force` while active |
+| HTTP | Body                                                              | Triggered by                                                  |
+| ---- | ----------------------------------------------------------------- | ------------------------------------------------------------- |
+| 404  | `{ error: "task not found" }`                                     | `POST /api/tasks/:id/run` with unknown task                   |
+| 404  | `{ error: "run not found" }`                                      | `POST /cancel`, `DELETE /api/runs/:id` with unknown id        |
+| 404  | `{ error: "not found" }`                                          | `GET /api/runs/:id` with unknown id                           |
+| 404  | (empty body)                                                      | `/screenshots/*` missing or non-`.png`                        |
+| 409  | `{ error: "run is already <status>" }`                            | `POST /cancel` on a non-`running` row with no live handler    |
+| 409  | `{ error: "run not active or already paused" }`                   | `POST /pause` when `pause()` returns false                    |
+| 409  | `{ error: "run not active or not paused" }`                       | `POST /resume` when `resume()` returns false                  |
+| 409  | `{ error: "run is still active — cancel it first, then delete" }` | `DELETE /api/runs/:id` while `status='running'`               |
+| 409  | `{ error: "<n> run(s) still active", active: <n> }`               | `DELETE /api/tasks/:taskId/runs` without `force` while active |
 
 ## 3. Invariants
 
 - **I1 — Run starts produce one durable row.** Every successful `POST /run` results in exactly one new `runs` row, regardless of whether the agent later succeeds, errors, or cancels. Falsifiable: count rows before and after a 200 response.
 - **I2 — Terminal status is exclusive.** A `runs` row reaches exactly one of `done | error | cancelled` via the IIFE's UPDATE. The `running` state is observable only between INSERT and that UPDATE (or until a force-cancel / zombie sweep flips it). Falsifiable: a finalized row has `finished_at IS NOT NULL` and `status != 'running'`.
 - **I3 — End-event emission.** Every detached agent IIFE publishes exactly one `{ kind: "end" }` event. Force-cancel publishes one `{ kind: "end" }` for the zombie path. SSE clients can therefore treat `end` as "stop reading".
-- **I4 — Replay-then-subscribe ordering.** On `GET /stream`, all `replay: true` envelopes are written before any live event. Falsifiable: if a live event is delivered while replay is mid-flight, it is queued in the bus subscriber callback (synchronous fan-out per `event-bus.md` I5) — but in practice, `subscribe()` is called *after* the `for` loop completes, so the live phase begins strictly after replay ends.
+- **I4 — Replay-then-subscribe ordering.** On `GET /stream`, all `replay: true` envelopes are written before any live event. Falsifiable: if a live event is delivered while replay is mid-flight, it is queued in the bus subscriber callback (synchronous fan-out per `event-bus.md` I5) — but in practice, `subscribe()` is called _after_ the `for` loop completes, so the live phase begins strictly after replay ends.
 - **I5 — Pause-state surfacing on reconnect.** A UI reconnecting to a paused run sees a `{ kind: "paused" }` event after replay and before any live events. Falsifiable: pause an in-flight run, open a fresh SSE connection, observe `paused` in the frame stream.
 - **I6 — Cancel idempotence at the registry.** `POST /cancel` while a run is already `cancelled`/`done`/`error` returns 409, not 200. (`requestCancel` is itself idempotent — see `run-control-cancel`.)
 - **I7 — Screenshot deletion precedes row deletion.** `deleteRunArtifacts` removes every PNG referenced by `steps.screenshot_path` (best-effort; individual `unlink` failures are swallowed) before `DELETE FROM runs WHERE id`. The cascade then removes `steps`.
@@ -134,7 +134,7 @@ Bulk-clear all runs for a task.
 
 ## 4. How (briefly)
 
-- **Detached IIFE owns finalization.** The route returns `{ run_id }` after INSERT; the agent loop runs in a fire-and-forget async IIFE that owns the terminal UPDATE and the terminal `end` event. Errors thrown by `runAgent` are caught inside `runAgent` and surface as `outcome.status === "error"`; a throw escaping the IIFE would land in the Node unhandled-rejection handler with no row finalization. `runAgent`'s contract guarantees it does not throw — see `agent.ts`. *No defensive try/catch in the IIFE.*
+- **Detached IIFE owns finalization.** The route returns `{ run_id }` after INSERT; the agent loop runs in a fire-and-forget async IIFE that owns the terminal UPDATE and the terminal `end` event. Errors thrown by `runAgent` are caught inside `runAgent` and surface as `outcome.status === "error"`; a throw escaping the IIFE would land in the Node unhandled-rejection handler with no row finalization. `runAgent`'s contract guarantees it does not throw — see `agent.ts`. _No defensive try/catch in the IIFE._
 - **Force-cancel zombie path.** `requestCancel` returns `false` when no in-process handler is registered for the run id. The route uses that as the signal to do a DB-only force-clear. Without this, a `tsx watch` reload during a run would leave the UI permanently spinning.
 - **SSE write strategy.** Replays are synchronous SQLite reads serialized to the socket via `reply.raw.write`. No flush, no chunking strategy beyond what Node's HTTP layer applies. For very large run histories, the entire replay is written in one synchronous burst before `subscribe()` is called.
 - **Bulk-delete rationale.** The `DELETE /api/tasks/:taskId/runs` shape supports the UI's "Clear all runs" affordance. `force` is required to clear active runs because the alternative would silently abandon them; `reset_ids` is a developer-affordance for keeping the autoincrement low after wipes.
@@ -142,28 +142,28 @@ Bulk-clear all runs for a task.
 
 ## 5. How tested
 
-| Spec section / claim                                | Test file | Test name | Status     |
-|-----------------------------------------------------|-----------|-----------|------------|
-| §2 `POST /run` 200 returns `run_id`                 | —         | —         | TODO(test) |
-| §2 `POST /run` 404 for unknown task                 | —         | —         | TODO(test) |
-| §2 `POST /cancel` live mode                         | —         | —         | TODO(test) |
-| §2 `POST /cancel` force mode (zombie path)          | —         | —         | TODO(test) |
-| §2 `POST /cancel` 404 for unknown run               | —         | —         | TODO(test) |
-| §2 `POST /cancel` 409 for already-finalized run     | —         | —         | TODO(test) |
-| §2 `POST /pause` and `/resume` 200 + 409 paths      | —         | —         | TODO(test) |
-| §2 `DELETE /api/runs/:id` removes screenshot files  | —         | —         | TODO(test) |
-| §2 `DELETE /api/runs/:id` 409 while running         | —         | —         | TODO(test) |
-| §2 `DELETE /api/tasks/:taskId/runs` force semantics | —         | —         | TODO(test) |
-| §2 `DELETE /api/tasks/:taskId/runs` `reset_ids` guard | —       | —         | TODO(test) |
-| §3 I1 one row per `POST /run`                       | —         | —         | TODO(test) |
-| §3 I3 exactly one `end` event per run               | —         | —         | TODO(test) |
-| §3 I4 replay-then-subscribe ordering                | —         | —         | TODO(test) — integration scope; see `event-bus.md` drift |
-| §3 I5 synthetic `paused` on reconnect               | —         | —         | TODO(test) |
-| §3 I7 screenshot deletion precedes row deletion     | —         | —         | TODO(test) |
-| §2 `/screenshots/*` 404 for non-`.png`              | —         | —         | TODO(test) |
-| §2 `/screenshots/*` path-traversal probe (drift)    | —         | —         | TODO(test) |
-| §2 SSE terminal-state short-circuit                 | —         | —         | TODO(test) |
-| §2 SSE close on client disconnect calls unsubscribe | —         | —         | TODO(test) |
+| Spec section / claim                                  | Test file | Test name | Status                                                   |
+| ----------------------------------------------------- | --------- | --------- | -------------------------------------------------------- |
+| §2 `POST /run` 200 returns `run_id`                   | —         | —         | TODO(test)                                               |
+| §2 `POST /run` 404 for unknown task                   | —         | —         | TODO(test)                                               |
+| §2 `POST /cancel` live mode                           | —         | —         | TODO(test)                                               |
+| §2 `POST /cancel` force mode (zombie path)            | —         | —         | TODO(test)                                               |
+| §2 `POST /cancel` 404 for unknown run                 | —         | —         | TODO(test)                                               |
+| §2 `POST /cancel` 409 for already-finalized run       | —         | —         | TODO(test)                                               |
+| §2 `POST /pause` and `/resume` 200 + 409 paths        | —         | —         | TODO(test)                                               |
+| §2 `DELETE /api/runs/:id` removes screenshot files    | —         | —         | TODO(test)                                               |
+| §2 `DELETE /api/runs/:id` 409 while running           | —         | —         | TODO(test)                                               |
+| §2 `DELETE /api/tasks/:taskId/runs` force semantics   | —         | —         | TODO(test)                                               |
+| §2 `DELETE /api/tasks/:taskId/runs` `reset_ids` guard | —         | —         | TODO(test)                                               |
+| §3 I1 one row per `POST /run`                         | —         | —         | TODO(test)                                               |
+| §3 I3 exactly one `end` event per run                 | —         | —         | TODO(test)                                               |
+| §3 I4 replay-then-subscribe ordering                  | —         | —         | TODO(test) — integration scope; see `event-bus.md` drift |
+| §3 I5 synthetic `paused` on reconnect                 | —         | —         | TODO(test)                                               |
+| §3 I7 screenshot deletion precedes row deletion       | —         | —         | TODO(test)                                               |
+| §2 `/screenshots/*` 404 for non-`.png`                | —         | —         | TODO(test)                                               |
+| §2 `/screenshots/*` path-traversal probe (drift)      | —         | —         | TODO(test)                                               |
+| §2 SSE terminal-state short-circuit                   | —         | —         | TODO(test)                                               |
+| §2 SSE close on client disconnect calls unsubscribe   | —         | —         | TODO(test)                                               |
 
 ### Deliberately not tested
 
@@ -178,6 +178,6 @@ Bulk-clear all runs for a task.
 - **Resolved — `/screenshots/*` path traversal.** Now goes through `safeResolveScreenshot` (`server/src/paths.ts`). Regression: `server/src/__tests__/paths.test.ts`.
 - **Resolved — fire-and-forget IIFE top-level catch.** The IIFE now wraps `runAgent` in `try/catch`, converts any throw into a synthetic `{ status: "error", error }` via `errorMessageFromThrow` (`server/src/errors.ts`), traces a `run.unhandled_throw` event, and routes the synthetic outcome through the same finalisation path. An outer `.catch()` on the IIFE itself catches throws inside finalisation. Regression: `server/src/__tests__/errors.test.ts`.
 - **⚠️ Drift — `DELETE /api/tasks/:taskId/runs` with `force` does not wait for cancellation.** It calls `requestCancel`, immediately UPDATEs the row to `cancelled`, then deletes screenshots. The agent IIFE for that run is still alive and may publish further events, eventually try to UPDATE the row, and find it gone (or already terminal). No corruption observed (UPDATE WHERE id matches nothing is a no-op), but the agent's screenshot writes can race with `deleteRunArtifacts`'s file unlinks.
-- **⚠️ Drift — no SSE `id:` field, no `Last-Event-ID` resume.** The browser's native EventSource will reconnect on transient drop, but the server has no cursor — it replays *everything* persisted so far on each reconnect. Fine for short runs; pathological for runs with thousands of steps and a flaky network.
+- **⚠️ Drift — no SSE `id:` field, no `Last-Event-ID` resume.** The browser's native EventSource will reconnect on transient drop, but the server has no cursor — it replays _everything_ persisted so far on each reconnect. Fine for short runs; pathological for runs with thousands of steps and a flaky network.
 - **❓ Open question — should this file be split?** `interface/http/routes/runs.ts` mixes nine endpoints, the SSE handler, and the screenshots static. Per `_LAYERS.md`, the SSE handler may belong in `interface/sse/runStream.ts` and the screenshots static in `interface/http/routes/screenshots.ts`. Ten small files vs one ~270-line file — a judgment call, defer until we add the next route.
 - **❓ Open question — request-shape validation.** No `zod` / `typebox` / `@fastify/schema` validation on params or query. Move `force`/`reset_ids` parsing into a Fastify schema once a validation layer is adopted.

@@ -20,9 +20,7 @@ import Anthropic from "@anthropic-ai/sdk";
  */
 export const LLM_BASE_URL = process.env.LLM_BASE_URL ?? "http://127.0.0.1:1234/v1";
 export const MODEL =
-  process.env.LLM_MODEL ??
-  process.env.OLLAMA_MODEL ??
-  "qwen3.6-27b-uncensored-hauhaucs-balanced";
+  process.env.LLM_MODEL ?? process.env.OLLAMA_MODEL ?? "qwen3.6-27b-uncensored-hauhaucs-balanced";
 /**
  * Context window of the loaded model. Used purely for the UI gauge — set this
  * to whatever you configured in LM Studio / Ollama / vLLM so the footer
@@ -183,7 +181,10 @@ export function toAnthropic(messages: Message[]): { system: string; messages: An
       const content: AnthropicContent[] = [];
       if (m.content) content.push({ type: "text", text: m.content });
       for (const b64 of m.images ?? []) {
-        content.push({ type: "image", source: { type: "base64", media_type: "image/png", data: b64 } });
+        content.push({
+          type: "image",
+          source: { type: "base64", media_type: "image/png", data: b64 },
+        });
       }
       result.push({
         role: "user",
@@ -207,7 +208,7 @@ export function toAnthropic(messages: Message[]): { system: string; messages: An
           type: "tool_use",
           id,
           name: tc.function?.name ?? "",
-          input: (tc.function?.arguments ?? {}) as Record<string, unknown>,
+          input: (tc.function?.arguments ?? {}),
         });
       }
       result.push({ role: "assistant", content });
@@ -224,7 +225,12 @@ export function toAnthropic(messages: Message[]): { system: string; messages: An
 type AnthropicTool = { name: string; description?: string; input_schema: unknown };
 
 function toAnthropicTools(tools: unknown[]): AnthropicTool[] {
-  return (tools as { type: string; function: { name: string; description?: string; parameters: unknown } }[])
+  return (
+    tools as {
+      type: string;
+      function: { name: string; description?: string; parameters: unknown };
+    }[]
+  )
     .filter((t) => t.type === "function")
     .map((t) => ({
       name: t.function.name,
@@ -240,7 +246,7 @@ function toAnthropicTools(tools: unknown[]): AnthropicTool[] {
 function safeParseArgs(raw: string | undefined): Record<string, unknown> {
   if (!raw) return {};
   try {
-    const v = JSON.parse(raw);
+    const v: unknown = JSON.parse(raw);
     return typeof v === "object" && v !== null ? (v as Record<string, unknown>) : {};
   } catch {
     return {};
@@ -262,16 +268,19 @@ export async function chatOnce(client: LlmClient, opts: ChatOptions): Promise<Ch
       model: opts.model,
       max_tokens: 8192,
       temperature: opts.temperature ?? 0.2,
-      messages: messages as Parameters<typeof client.client.messages.create>[0]["messages"],
+      messages: messages,
       ...(system ? { system } : {}),
       ...(anthropicTools.length > 0
-        ? { tools: anthropicTools as Parameters<typeof client.client.messages.create>[0]["tools"], tool_choice: { type: "auto" } }
+        ? {
+            tools: anthropicTools as Parameters<typeof client.client.messages.create>[0]["tools"],
+            tool_choice: { type: "auto" },
+          }
         : {}),
     };
 
     const response = (await client.client.messages.create(params, {
       signal: opts.signal,
-    } as Parameters<typeof client.client.messages.create>[1])) as Anthropic.Message;
+    })) as Anthropic.Message;
 
     let content = "";
     const toolCalls: ToolCall[] = [];
@@ -316,12 +325,16 @@ export async function chatOnce(client: LlmClient, opts: ChatOptions): Promise<Ch
     body as unknown as Parameters<typeof client.client.chat.completions.create>[0],
     { signal: opts.signal },
   )) as unknown as {
-    choices: Array<{
+    choices: {
       message: {
         content: string | null;
-        tool_calls?: Array<{ id: string; type: string; function: { name: string; arguments: string } }>;
+        tool_calls?: {
+          id: string;
+          type: string;
+          function: { name: string; arguments: string };
+        }[];
       };
-    }>;
+    }[];
     usage?: { prompt_tokens?: number; completion_tokens?: number };
   };
 

@@ -105,7 +105,7 @@ export function TaskEditor({
 function parseSteps(json: string | null): Block[] {
   if (!json) return [];
   try {
-    const parsed = JSON.parse(json);
+    const parsed: unknown = JSON.parse(json);
     return Array.isArray(parsed) ? (parsed as Block[]) : [];
   } catch {
     return [];

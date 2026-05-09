@@ -39,7 +39,8 @@ export function CompileFromText({
   const apply = (mode: "replace" | "append") => {
     if (!proposed) return;
     if (mode === "replace" && existingCount > 0) {
-      if (!confirm(`Replace existing ${existingCount} block${existingCount === 1 ? "" : "s"}?`)) return;
+      if (!confirm(`Replace existing ${existingCount} block${existingCount === 1 ? "" : "s"}?`))
+        return;
     }
     onApply(proposed, mode);
     setProposed(null);
@@ -173,9 +174,9 @@ function shortSummary(b: Block): string {
     case "verify":
       return b.condition;
     case "questionnaire":
-      return b.context || "(no context)";
+      return b.context?.trim() ? b.context : "(no context)";
     case "pause":
-      return b.message || "(no message)";
+      return b.message?.trim() ? b.message : "(no message)";
     case "for_each":
       return `${b.items} (${b.body.length} sub-blocks)`;
   }

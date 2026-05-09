@@ -6,9 +6,9 @@
 
 The agent talks to whatever model the user has running locally — LM Studio, Ollama, vLLM, SGLang, llama.cpp — or, when the local model can't make progress, falls back to the Anthropic API directly. Each provider speaks a slightly different protocol (OpenAI-compat tool-call shape, Anthropic content-block shape, message ordering rules), each emits different usage telemetry, and each has its own quirks around thinking-mode, image attachments, and cancellation. This module is the **single seam** that hides those differences from `agent.ts`: callers exchange a normalized `Message[]` / `ChatResponse` and never see provider-specific shapes.
 
-> **Non-obvious why — provider neutrality is load-bearing.** CLAUDE.md, "Things to avoid": *"Do not re-introduce a runtime-specific LLM client. `llm.ts` is OpenAI-compatible on purpose — it lets users swap between Ollama, LM Studio, vLLM, SGLang, etc. by env var. If you find yourself adding `import { Ollama }` or similar, stop and figure out how to do it through the `chatOnce` wrapper instead."* Adding an Ollama-specific client (e.g. for richer stats) would lock the project to one backend and break the user's ability to point at any OpenAI-compatible server. Anthropic is the *only* permitted second client because the API is fundamentally non-compatible (different content-block model, no `/v1/chat/completions` endpoint).
+> **Non-obvious why — provider neutrality is load-bearing.** CLAUDE.md, "Things to avoid": _"Do not re-introduce a runtime-specific LLM client. `llm.ts` is OpenAI-compatible on purpose — it lets users swap between Ollama, LM Studio, vLLM, SGLang, etc. by env var. If you find yourself adding `import { Ollama }` or similar, stop and figure out how to do it through the `chatOnce` wrapper instead."_ Adding an Ollama-specific client (e.g. for richer stats) would lock the project to one backend and break the user's ability to point at any OpenAI-compatible server. Anthropic is the _only_ permitted second client because the API is fundamentally non-compatible (different content-block model, no `/v1/chat/completions` endpoint).
 >
-> **Non-obvious why — thinking-mode toggle.** Qwen3.x emits `<think>...</think>` chain-of-thought by default, which is pure latency for *stateless atomic* steps (extract a value, verify a DOM state, answer a single questionnaire question). For *multi-turn* planning loops (`runAiSubGoal`: goal/click/fill blocks) the thinking actually improves the next-action choice, so it stays on. The flag is conveyed via `chat_template_kwargs.enable_thinking: false` — recognised by Qwen3.x running under LM Studio or Ollama's `/v1` endpoint, silently ignored by every other backend. The toggle is therefore *opportunistic*, not a correctness requirement.
+> **Non-obvious why — thinking-mode toggle.** Qwen3.x emits `<think>...</think>` chain-of-thought by default, which is pure latency for _stateless atomic_ steps (extract a value, verify a DOM state, answer a single questionnaire question). For _multi-turn_ planning loops (`runAiSubGoal`: goal/click/fill blocks) the thinking actually improves the next-action choice, so it stays on. The flag is conveyed via `chat_template_kwargs.enable_thinking: false` — recognised by Qwen3.x running under LM Studio or Ollama's `/v1` endpoint, silently ignored by every other backend. The toggle is therefore _opportunistic_, not a correctness requirement.
 >
 > **Non-obvious why — image pruning is a context-budget tactic, lives in agent.ts.** Screenshots are 50–200 KB base64 each; keeping all of them blows out the prompt cache long before the 32k window. `pruneOldImages` (in `agent.ts`, not here) keeps the last `KEEP_RECENT_IMAGES` (default 3) screenshots' image bytes and replaces older ones with a text marker. This module is unaware of the policy — it just serializes whatever `images` array each `Message` carries.
 
@@ -16,21 +16,21 @@ The agent talks to whatever model the user has running locally — LM Studio, Ol
 
 ### Exports
 
-| Symbol             | Kind     | Signature / shape                                                                                          | Stability |
-|--------------------|----------|------------------------------------------------------------------------------------------------------------|-----------|
-| `LLM_BASE_URL`     | const    | `string` — defaults to `"http://127.0.0.1:1234/v1"` (LM Studio)                                            | stable    |
-| `MODEL`            | const    | `string` — defaults to `"qwen3.6-27b-uncensored-hauhaucs-balanced"`; honours `LLM_MODEL` then `OLLAMA_MODEL` | stable    |
-| `CONTEXT_WINDOW`   | const    | `number` — UI-only gauge value; defaults to `32768`                                                        | stable    |
-| `LlmClient`        | type     | `{ provider: "openai"; client: OpenAI } \| { provider: "anthropic"; client: Anthropic }`                   | stable    |
-| `Message`          | type     | `{ role: "system"\|"user"\|"assistant"\|"tool"; content: string; images?: string[]; tool_calls?: ToolCall[] }` | stable |
-| `ToolCall`         | type     | `{ function?: { name?: string; arguments?: Record<string, unknown> } }`                                    | stable    |
-| `ChatOptions`      | type     | `{ model; messages; tools?; temperature?; think?; signal? }`                                               | stable    |
-| `ChatResponse`     | type     | `{ message: { content; tool_calls }; usage: { prompt_tokens; completion_tokens }; duration_ms }`           | stable    |
-| `newLlmClient`     | function | `() => LlmClient` — chooses provider from `LLM_PROVIDER` env (`"anthropic"` ⇒ Anthropic, else OpenAI-compat) | stable    |
-| `newAnthropicClient` | function | `() => LlmClient` — always Anthropic; for the rescue path, independent of primary provider. Model is per-call via `ChatOptions.model`. | stable    |
-| `chatOnce`         | function | `(client: LlmClient, opts: ChatOptions) => Promise<ChatResponse>` — one round-trip, cancellable           | stable    |
-| `toAnthropic`      | function | `(messages: Message[]) => { system: string; messages: AnthropicMessage[] }` — exported for testability    | evolving  |
-| `chatWithRetry`    | function | (currently `agent.ts`-local) `(client, request, isCancelled, setActiveController, onRetry) => Promise<ChatResponse>` | evolving — relocates to `infrastructure/llm/chatWithRetry.ts` post-refactor |
+| Symbol               | Kind     | Signature / shape                                                                                                                      | Stability                                                                   |
+| -------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| `LLM_BASE_URL`       | const    | `string` — defaults to `"http://127.0.0.1:1234/v1"` (LM Studio)                                                                        | stable                                                                      |
+| `MODEL`              | const    | `string` — defaults to `"qwen3.6-27b-uncensored-hauhaucs-balanced"`; honours `LLM_MODEL` then `OLLAMA_MODEL`                           | stable                                                                      |
+| `CONTEXT_WINDOW`     | const    | `number` — UI-only gauge value; defaults to `32768`                                                                                    | stable                                                                      |
+| `LlmClient`          | type     | `{ provider: "openai"; client: OpenAI } \| { provider: "anthropic"; client: Anthropic }`                                               | stable                                                                      |
+| `Message`            | type     | `{ role: "system"\|"user"\|"assistant"\|"tool"; content: string; images?: string[]; tool_calls?: ToolCall[] }`                         | stable                                                                      |
+| `ToolCall`           | type     | `{ function?: { name?: string; arguments?: Record<string, unknown> } }`                                                                | stable                                                                      |
+| `ChatOptions`        | type     | `{ model; messages; tools?; temperature?; think?; signal? }`                                                                           | stable                                                                      |
+| `ChatResponse`       | type     | `{ message: { content; tool_calls }; usage: { prompt_tokens; completion_tokens }; duration_ms }`                                       | stable                                                                      |
+| `newLlmClient`       | function | `() => LlmClient` — chooses provider from `LLM_PROVIDER` env (`"anthropic"` ⇒ Anthropic, else OpenAI-compat)                           | stable                                                                      |
+| `newAnthropicClient` | function | `() => LlmClient` — always Anthropic; for the rescue path, independent of primary provider. Model is per-call via `ChatOptions.model`. | stable                                                                      |
+| `chatOnce`           | function | `(client: LlmClient, opts: ChatOptions) => Promise<ChatResponse>` — one round-trip, cancellable                                        | stable                                                                      |
+| `toAnthropic`        | function | `(messages: Message[]) => { system: string; messages: AnthropicMessage[] }` — exported for testability                                 | evolving                                                                    |
+| `chatWithRetry`      | function | (currently `agent.ts`-local) `(client, request, isCancelled, setActiveController, onRetry) => Promise<ChatResponse>`                   | evolving — relocates to `infrastructure/llm/chatWithRetry.ts` post-refactor |
 
 ### Image attachment shape
 
@@ -52,11 +52,11 @@ The agent talks to whatever model the user has running locally — LM Studio, Ol
 
 ### Errors
 
-| Error                                | Returned when                                       | Caller should…                                            |
-|--------------------------------------|-----------------------------------------------------|-----------------------------------------------------------|
+| Error                                  | Returned when                                      | Caller should…                                                                                                  |
+| -------------------------------------- | -------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
 | Provider SDK error (network, 4xx, 5xx) | upstream LLM call fails                            | classified by `isTransientLLMError` regex; retried by `chatWithRetry` for transient kinds, otherwise propagated |
-| `AbortError` / `aborted` (signal)    | `signal.abort()` was called                         | `chatWithRetry` checks `isCancelled()` first and converts to a final cancellation; never retried              |
-| Malformed tool-call arguments JSON   | local model returned non-JSON `function.arguments`  | swallowed by `safeParseArgs`; tool receives `{}` and likely fails its own validation                          |
+| `AbortError` / `aborted` (signal)      | `signal.abort()` was called                        | `chatWithRetry` checks `isCancelled()` first and converts to a final cancellation; never retried                |
+| Malformed tool-call arguments JSON     | local model returned non-JSON `function.arguments` | swallowed by `safeParseArgs`; tool receives `{}` and likely fails its own validation                            |
 
 ## 3. Invariants
 
@@ -82,19 +82,19 @@ The agent talks to whatever model the user has running locally — LM Studio, Ol
 
 ## 5. How tested
 
-| Spec section / claim                                          | Test file | Test name | Status |
-|---------------------------------------------------------------|-----------|-----------|--------|
-| §3 I1 no `client.provider` checks leak into `agent.ts`        | —         | —         | TODO(test) — static grep assertion |
-| §3 I2 image attachments only on permitted roles               | —         | —         | TODO(test) |
-| §3 I3 tool-call arguments object round-trip                   | —         | —         | TODO(test) |
-| §3 I4 `enable_thinking` only present when `think === false`   | —         | —         | TODO(test) |
-| §3 I5 `duration_ms` is wall-clock                             | —         | —         | TODO(test) |
-| §3 I6 abort mid-flight rejects promptly                       | —         | —         | TODO(test) |
-| §3 I7 missing `usage` defaults to zeros                       | —         | —         | TODO(test) |
-| §3 I8 `toAnthropic` extracts system + groups tool turns       | —         | —         | TODO(test) — pure function, easy unit test |
-| §3 I9 `chatWithRetry` classifier + backoff schedule           | —         | —         | TODO(test) — fake-timers + stubbed `chatOnce` |
-| §2 OpenAI-compat tool-call shape (id format, JSON-stringified args) | —   | —         | TODO(test) |
-| §2 Anthropic positional `toolu_<i>_<k>` correlation           | —         | —         | TODO(test) |
+| Spec section / claim                                                | Test file | Test name | Status                                        |
+| ------------------------------------------------------------------- | --------- | --------- | --------------------------------------------- |
+| §3 I1 no `client.provider` checks leak into `agent.ts`              | —         | —         | TODO(test) — static grep assertion            |
+| §3 I2 image attachments only on permitted roles                     | —         | —         | TODO(test)                                    |
+| §3 I3 tool-call arguments object round-trip                         | —         | —         | TODO(test)                                    |
+| §3 I4 `enable_thinking` only present when `think === false`         | —         | —         | TODO(test)                                    |
+| §3 I5 `duration_ms` is wall-clock                                   | —         | —         | TODO(test)                                    |
+| §3 I6 abort mid-flight rejects promptly                             | —         | —         | TODO(test)                                    |
+| §3 I7 missing `usage` defaults to zeros                             | —         | —         | TODO(test)                                    |
+| §3 I8 `toAnthropic` extracts system + groups tool turns             | —         | —         | TODO(test) — pure function, easy unit test    |
+| §3 I9 `chatWithRetry` classifier + backoff schedule                 | —         | —         | TODO(test) — fake-timers + stubbed `chatOnce` |
+| §2 OpenAI-compat tool-call shape (id format, JSON-stringified args) | —         | —         | TODO(test)                                    |
+| §2 Anthropic positional `toolu_<i>_<k>` correlation                 | —         | —         | TODO(test)                                    |
 
 ### Deliberately not tested
 
@@ -104,12 +104,12 @@ The agent talks to whatever model the user has running locally — LM Studio, Ol
 
 ## 6. Drift / open questions
 
-- **⚠️ Drift — CLAUDE.md defaults are stale.** CLAUDE.md states *"Default config is `qwen3.6:27b` against Ollama at `http://127.0.0.1:11434/v1`"* and the env-var section repeats those defaults. The actual fallbacks in `llm.ts:21-25` and `server/.env.example` are now **LM Studio**: `http://127.0.0.1:1234/v1` and `qwen3.6-27b-uncensored-hauhaucs-balanced`. The README/CLAUDE.md needs to follow.
+- **⚠️ Drift — CLAUDE.md defaults are stale.** CLAUDE.md states _"Default config is `qwen3.6:27b` against Ollama at `http://127.0.0.1:11434/v1`"_ and the env-var section repeats those defaults. The actual fallbacks in `llm.ts:21-25` and `server/.env.example` are now **LM Studio**: `http://127.0.0.1:1234/v1` and `qwen3.6-27b-uncensored-hauhaucs-balanced`. The README/CLAUDE.md needs to follow.
 - **⚠️ Drift — `LLM_PROVIDER` is undocumented in CLAUDE.md.** The "Env vars" subsection lists `LLM_BASE_URL`, `LLM_MODEL`, `LLM_API_KEY` but not `LLM_PROVIDER` (which selects Anthropic vs OpenAI-compat). Add it.
 - **⚠️ Drift — `chatWithRetry` is in the wrong module.** It currently lives in `agent.ts:31-74` despite being pure infrastructure (knows about `chatOnce`, retry timing, transient classification — knows nothing about blocks or runs). Post-refactor target is `infrastructure/llm/chatWithRetry.ts` per `_LAYERS.md`. Today, an `agent.ts`-local helper is harder to test in isolation and harder to swap.
-- **⚠️ Drift — transient-error classifier is broader than CLAUDE.md claims.** CLAUDE.md "Guardrails" lists `fetch failed`, `ECONN*`, `ETIMEDOUT`, `socket hang up`. The actual regex (`agent.ts:34`) also matches `EAI_AGAIN`, `network`, and — load-bearingly — `aborted by`. The `aborted by` clause is dangerous: a user-cancellation that surfaces as `"aborted by user"` could be classified transient and retried *if* `isCancelled()` returns false at the moment of the check. The order-of-operations in `chatWithRetry` (`isCancelled()` checked first) defends against this in practice, but the classifier itself shouldn't include cancellation patterns.
+- **⚠️ Drift — transient-error classifier is broader than CLAUDE.md claims.** CLAUDE.md "Guardrails" lists `fetch failed`, `ECONN*`, `ETIMEDOUT`, `socket hang up`. The actual regex (`agent.ts:34`) also matches `EAI_AGAIN`, `network`, and — load-bearingly — `aborted by`. The `aborted by` clause is dangerous: a user-cancellation that surfaces as `"aborted by user"` could be classified transient and retried _if_ `isCancelled()` returns false at the moment of the check. The order-of-operations in `chatWithRetry` (`isCancelled()` checked first) defends against this in practice, but the classifier itself shouldn't include cancellation patterns.
 - **Resolved drift** — `newAnthropicClient(model)` previously accepted a `model` argument that was silently dropped; the model has always been per-call via `ChatOptions.model`. The parameter has been removed. Regression: `server/src/__tests__/llm.test.ts`.
-- **⚠️ Drift — `KEEP_RECENT_IMAGES` location.** The image-prune policy is described in CLAUDE.md as part of the "Sub-agent loop" but the implementation lives in `agent.ts` (`pruneOldImages`). This module knows nothing about the budget; a future `infrastructure/llm/pruneImages.ts` should own it so that *every* call site (compile route, rescue path, future utilities) gets the same policy automatically.
+- **⚠️ Drift — `KEEP_RECENT_IMAGES` location.** The image-prune policy is described in CLAUDE.md as part of the "Sub-agent loop" but the implementation lives in `agent.ts` (`pruneOldImages`). This module knows nothing about the budget; a future `infrastructure/llm/pruneImages.ts` should own it so that _every_ call site (compile route, rescue path, future utilities) gets the same policy automatically.
 - **❓ Question — should `chatOnce` surface backend-native stats when present?** Today we discard Ollama's `prompt_eval_count` / `eval_duration`. Adding optional `ChatResponse.backendStats?: { prompt_eval_count?, eval_count?, eval_duration_ns? }` would let the UI show authoritative tok/s on Ollama without re-introducing an Ollama-specific client (the OpenAI SDK exposes `extra` fields if we ask). Trade-off: adds a barely-typed surface that varies by backend.
 - **❓ Question — should `temperature` default differ per provider?** Hard-coded to `0.2` for both. Anthropic's models behave fine at this; some local backends benefit from `0.0` for tool-use determinism. Worth measuring.
 - **❓ Question — is `max_tokens: 8192` the right Anthropic cap?** Today's Sonnet/Opus accept much more. 8192 was chosen to cap cost during rescue; revisit when the rescue UX has settled.

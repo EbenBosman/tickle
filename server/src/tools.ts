@@ -1,5 +1,6 @@
 import type { Session } from "./browser.ts";
 import { takeSnapshot } from "./snapshot.ts";
+import { asString } from "./coerce.ts";
 
 /**
  * Tool definitions sent to Ollama. The primary loop is `snapshot` → `act` —
@@ -29,8 +30,17 @@ export const toolDefs = [
       parameters: {
         type: "object",
         properties: {
-          query: { type: "string", description: "Case-insensitive name substring; searches the whole page (ignores viewport filter)" },
-          all: { type: "boolean", description: "Include off-screen elements too. Default false on dense pages, true on sparse ones.", default: false },
+          query: {
+            type: "string",
+            description:
+              "Case-insensitive name substring; searches the whole page (ignores viewport filter)",
+          },
+          all: {
+            type: "boolean",
+            description:
+              "Include off-screen elements too. Default false on dense pages, true on sparse ones.",
+            default: false,
+          },
           max: { type: "number", description: "Maximum elements (default 150)", default: 150 },
         },
       },
@@ -99,7 +109,8 @@ export const toolDefs = [
     type: "function",
     function: {
       name: "press_key",
-      description: "Press a key at the page level (no element focus). Use act(id, 'press', key) to press into a specific element.",
+      description:
+        "Press a key at the page level (no element focus). Use act(id, 'press', key) to press into a specific element.",
       parameters: {
         type: "object",
         properties: { key: { type: "string", description: "e.g. Enter, Escape, Tab, ArrowDown" } },
@@ -111,7 +122,8 @@ export const toolDefs = [
     type: "function",
     function: {
       name: "screenshot",
-      description: "Take a fresh screenshot of the current viewport (the model receives the image). Most state changes auto-screenshot — use this only when you want a new view without changing state.",
+      description:
+        "Take a fresh screenshot of the current viewport (the model receives the image). Most state changes auto-screenshot — use this only when you want a new view without changing state.",
       parameters: { type: "object", properties: {} },
     },
   },
@@ -138,15 +150,11 @@ export type ToolResult =
 
 type Args = Record<string, unknown>;
 
-export async function executeTool(
-  session: Session,
-  name: string,
-  args: Args,
-): Promise<ToolResult> {
+export async function executeTool(session: Session, name: string, args: Args): Promise<ToolResult> {
   try {
     switch (name) {
       case "navigate": {
-        const url = String(args.url ?? "");
+        const url = asString(args.url);
         if (!/^https?:\/\//i.test(url)) {
           return { ok: false, error: "navigate.url must be http(s)://" };
         }
@@ -156,7 +164,7 @@ export async function executeTool(
 
       case "snapshot": {
         const snap = await takeSnapshot(session, {
-          query: args.query ? String(args.query) : undefined,
+          query: args.query ? asString(args.query) : undefined,
           all: Boolean(args.all),
           max: args.max ? Number(args.max) : undefined,
         });
@@ -175,10 +183,13 @@ export async function executeTool(
 
       case "act": {
         const id = Number(args.id ?? -1);
-        const action = String(args.action ?? "");
-        const value = args.value !== undefined ? String(args.value) : undefined;
+        const action = asString(args.action);
+        const value = args.value !== undefined ? asString(args.value) : undefined;
         if (!Number.isInteger(id) || id < 0) {
-          return { ok: false, error: "act.id must be a non-negative integer from the latest snapshot" };
+          return {
+            ok: false,
+            error: "act.id must be a non-negative integer from the latest snapshot",
+          };
         }
         const selector = `[data-tickle-id="${id}"]`;
         const locator = session.page.locator(selector).first();
@@ -204,7 +215,10 @@ export async function executeTool(
           case "press": {
             if (!value) return { ok: false, error: "act.press requires a `value` (key name)" };
             await locator.press(value, { timeout: 8000 });
-            return { ok: true, text: `Pressed ${value} on [${id}]. URL is now ${session.page.url()}` };
+            return {
+              ok: true,
+              text: `Pressed ${value} on [${id}]. URL is now ${session.page.url()}`,
+            };
           }
           case "check":
             await locator.check({ timeout: 8000 });
@@ -231,20 +245,27 @@ export async function executeTool(
       }
 
       case "read_text": {
-        const selector = args.selector ? String(args.selector) : null;
+        const selector = args.selector ? asString(args.selector) : null;
         const text = await session.page.evaluate((sel) => {
           const root = sel ? document.querySelector(sel) : document.body;
           if (!root) return "";
 
           const HIDDEN_TAGS = new Set([
-            "script", "style", "template", "noscript", "meta", "link", "head", "title",
+            "script",
+            "style",
+            "template",
+            "noscript",
+            "meta",
+            "link",
+            "head",
+            "title",
           ]);
 
           const isInjectionRisk = (el: Element): boolean => {
             const tag = el.tagName.toLowerCase();
             if (HIDDEN_TAGS.has(tag)) return true;
             if (el.getAttribute("aria-hidden") === "true") return true;
-            const style = window.getComputedStyle(el as Element);
+            const style = window.getComputedStyle(el);
             if (style.display === "none") return true;
             if (style.visibility === "hidden") return true;
             if (parseFloat(style.opacity || "1") === 0) return true;
@@ -258,8 +279,22 @@ export async function executeTool(
           };
 
           const blockTags = new Set([
-            "div", "p", "br", "tr", "li", "section", "article",
-            "h1", "h2", "h3", "h4", "h5", "h6", "header", "footer", "nav",
+            "div",
+            "p",
+            "br",
+            "tr",
+            "li",
+            "section",
+            "article",
+            "h1",
+            "h2",
+            "h3",
+            "h4",
+            "h5",
+            "h6",
+            "header",
+            "footer",
+            "nav",
           ]);
 
           const walk = (node: Node): string => {
@@ -277,7 +312,11 @@ export async function executeTool(
 
           return walk(root);
         }, selector);
-        const trimmed = text.replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim().slice(0, 6000);
+        const trimmed = text
+          .replace(/[ \t]+\n/g, "\n")
+          .replace(/\n{3,}/g, "\n\n")
+          .trim()
+          .slice(0, 6000);
         return { ok: true, text: trimmed || "(empty)" };
       }
 
@@ -288,15 +327,16 @@ export async function executeTool(
       }
 
       case "wait_for": {
-        const selector = String(args.selector ?? "");
+        const selector = asString(args.selector);
         const timeout = Number(args.timeout_ms ?? 8000);
         await session.page.locator(selector).first().waitFor({ state: "attached", timeout });
         return { ok: true, text: `Element ${selector} present` };
       }
 
       case "press_key": {
-        await session.page.keyboard.press(String(args.key ?? ""));
-        return { ok: true, text: `Pressed ${args.key}` };
+        const key = asString(args.key);
+        await session.page.keyboard.press(key);
+        return { ok: true, text: `Pressed ${key}` };
       }
 
       case "screenshot": {
@@ -305,7 +345,7 @@ export async function executeTool(
       }
 
       case "fetch_url": {
-        const url = String(args.url ?? "");
+        const url = asString(args.url);
         if (!/^https?:\/\//i.test(url)) {
           return { ok: false, error: "fetch_url.url must be http(s)://" };
         }
@@ -314,18 +354,41 @@ export async function executeTool(
         try {
           await tempPage.goto(url, { waitUntil: "domcontentloaded", timeout: 20_000 });
           const text = await tempPage.evaluate(() => {
-            const HIDDEN = new Set(["script", "style", "template", "noscript", "meta", "link", "head", "title"]);
+            const HIDDEN = new Set([
+              "script",
+              "style",
+              "template",
+              "noscript",
+              "meta",
+              "link",
+              "head",
+              "title",
+            ]);
             const isHidden = (el: Element): boolean => {
               if (HIDDEN.has(el.tagName.toLowerCase())) return true;
               if (el.getAttribute("aria-hidden") === "true") return true;
-              const s = window.getComputedStyle(el as Element);
+              const s = window.getComputedStyle(el);
               if (s.display === "none" || s.visibility === "hidden") return true;
               if (parseFloat(s.opacity || "1") === 0) return true;
               return false;
             };
             const block = new Set([
-              "div", "p", "br", "tr", "li", "section", "article",
-              "h1", "h2", "h3", "h4", "h5", "h6", "header", "footer", "nav",
+              "div",
+              "p",
+              "br",
+              "tr",
+              "li",
+              "section",
+              "article",
+              "h1",
+              "h2",
+              "h3",
+              "h4",
+              "h5",
+              "h6",
+              "header",
+              "footer",
+              "nav",
             ]);
             const walk = (node: Node): string => {
               if (node.nodeType === Node.TEXT_NODE) return node.textContent ?? "";

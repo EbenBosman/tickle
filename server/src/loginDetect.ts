@@ -47,12 +47,11 @@ export async function detectLoginPrompt(page: Page): Promise<LoginDetection> {
     const isVisible = (el: Element): boolean => {
       const r = (el as HTMLElement).getBoundingClientRect();
       if (r.width === 0 || r.height === 0) return false;
-      const s = window.getComputedStyle(el as HTMLElement);
+      const s = window.getComputedStyle(el);
       return s.visibility !== "hidden" && s.display !== "none" && s.opacity !== "0";
     };
 
-    const pwd = Array.from(document.querySelectorAll('input[type="password"]'))
-      .find(isVisible);
+    const pwd = Array.from(document.querySelectorAll('input[type="password"]')).find(isVisible);
     if (pwd) return { kind: "password" as const };
 
     const webauthn = document.querySelector(

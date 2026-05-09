@@ -6,13 +6,13 @@ Tickle is a **single-user local tool**. It binds to `127.0.0.1`, has no auth, ho
 
 ## Threat model
 
-| In scope                                                       | Out of scope                                                  |
-|----------------------------------------------------------------|----------------------------------------------------------------|
-| Hostile web pages tricking the agent into harmful actions      | Multi-user authentication, RBAC, audit                         |
-| Untrusted page content reaching the LLM as instructions        | Network-exposed deployments                                    |
-| Local code accidentally committing secrets                     | Production-grade key vaulting                                  |
-| Malicious browser extensions / pages reading the API           | Compromised host OS                                            |
-| LLM responses with prompt-injection-style outputs              | Anti-fingerprinting, anti-detection                            |
+| In scope                                                  | Out of scope                           |
+| --------------------------------------------------------- | -------------------------------------- |
+| Hostile web pages tricking the agent into harmful actions | Multi-user authentication, RBAC, audit |
+| Untrusted page content reaching the LLM as instructions   | Network-exposed deployments            |
+| Local code accidentally committing secrets                | Production-grade key vaulting          |
+| Malicious browser extensions / pages reading the API      | Compromised host OS                    |
+| LLM responses with prompt-injection-style outputs         | Anti-fingerprinting, anti-detection    |
 
 The persistent profile, the trace log, and the SQLite DB all hold material that, if leaked, would expose the user's identity. They live under `server/data/`, which is gitignored by an explicit rule (see [`.gitignore`](../../../.gitignore)).
 

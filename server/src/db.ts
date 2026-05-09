@@ -148,7 +148,12 @@ export type Lesson = {
   created_at: string;
 };
 
-export function addLesson(runId: number | null, blockId: string | null, lesson: string, situation: string | null): void {
+export function addLesson(
+  runId: number | null,
+  blockId: string | null,
+  lesson: string,
+  situation: string | null,
+): void {
   const row = db
     .prepare("INSERT INTO lessons (run_id, block_id, lesson, situation) VALUES (?, ?, ?, ?)")
     .run(runId, blockId, lesson, situation) as { lastInsertRowid: number };
@@ -162,9 +167,7 @@ export function addLesson(runId: number | null, blockId: string | null, lesson: 
 
 export function searchLessons(query: string, limit = 5): Lesson[] {
   if (!query.trim()) {
-    return db
-      .prepare("SELECT * FROM lessons ORDER BY id DESC LIMIT ?")
-      .all(limit) as Lesson[];
+    return db.prepare("SELECT * FROM lessons ORDER BY id DESC LIMIT ?").all(limit) as Lesson[];
   }
   // FTS5 match; fall back to recency on error (e.g. query syntax issues)
   try {
@@ -181,9 +184,7 @@ export function searchLessons(query: string, limit = 5): Lesson[] {
   } catch {
     // fall through
   }
-  return db
-    .prepare("SELECT * FROM lessons ORDER BY id DESC LIMIT ?")
-    .all(limit) as Lesson[];
+  return db.prepare("SELECT * FROM lessons ORDER BY id DESC LIMIT ?").all(limit) as Lesson[];
 }
 
 export function listLessons(offset = 0, limit = 50): { lessons: Lesson[]; total: number } {

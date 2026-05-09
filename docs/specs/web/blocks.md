@@ -7,6 +7,7 @@
 The frontend renders a typed-block editor and replays SSE events keyed by `block.id`. To do that it needs the same `Block` discriminated union the server persists, plus presentation-only metadata (`icon`, `color`, `label`, `description`) the server has no business knowing about. Today the file mixes both concerns: a re-declared mirror of `server/src/blocks.ts` types **and** UI metadata. The mirror is a copy, not an import, because there is no shared `domain/` package yet.
 
 > **Non-obvious why:**
+>
 > - **Persisted schema.** The type union is the wire format of `tasks.steps` JSON. Drift from the server union breaks save/load round-trips. See §6.
 > - **Two-file split is intentional going forward.** `_LAYERS.md` puts types in `web/src/domain/` and presentation maps in `web/src/ui/`. `KIND_META`, `summaryOf`, `BLOCK_KINDS`, `CLICK_ROLES` (UI ordering) belong on the `ui/` side; types and `newBlock` belong on the `domain/` side.
 > - **`newBlock` duplication is required only until shared `domain/`.** Server's `newBlock` uses `node:crypto.randomUUID`; web's wraps `crypto.randomUUID` with a non-cryptographic `Math.random`+`Date.now` fallback for environments where Web Crypto is missing. Once shared, the fallback becomes the only path the browser code uses.
@@ -15,26 +16,26 @@ The frontend renders a typed-block editor and replays SSE events keyed by `block
 
 ### Exports
 
-| Symbol | Kind | Signature / shape | Stability |
-|---|---|---|---|
-| `BlockKind` | type | `"navigate" \| "goal" \| "pause" \| "click" \| "fill" \| "extract" \| "verify" \| "questionnaire" \| "for_each"` | persisted — must match server |
-| `ClickRole` | type | `"any" \| "button" \| "link" \| "tab" \| "menuitem" \| "checkbox" \| "radio" \| "switch" \| "combobox" \| "option" \| "textbox"` | must match server |
-| `BaseBlock` | interface | `{ id: string; kind: BlockKind; pauseAfter?: boolean }` | must match server |
-| `NavigateBlock` | interface | `BaseBlock & { kind: "navigate"; url: string }` | persisted |
-| `GoalBlock` | interface | `BaseBlock & { kind: "goal"; description: string; max_steps?: number }` | persisted |
-| `PauseBlock` | interface | `BaseBlock & { kind: "pause"; message?: string }` | persisted |
-| `ClickBlock` | interface | `BaseBlock & { kind: "click"; target: string; role?: ClickRole }` | persisted |
-| `FillBlock` | interface | `BaseBlock & { kind: "fill"; target: string; value: string }` | persisted |
-| `ExtractBlock` | interface | `BaseBlock & { kind: "extract"; target: string; var_name: string }` | persisted |
-| `VerifyBlock` | interface | `BaseBlock & { kind: "verify"; condition: string; on_fail?: "halt" \| "pause" }` | persisted |
-| `QuestionnaireBlock` | interface | `BaseBlock & { kind: "questionnaire"; context?: string; unanswered_var?: string }` | persisted |
-| `ForEachBlock` | interface | `BaseBlock & { kind: "for_each"; items: string; item_var?: string; body: Block[] }` | persisted |
-| `Block` | type | discriminated union over `kind` | persisted |
-| `blockMeta` | function | `(kind: BlockKind) => { label: string; icon: string; color: string; description: string }` — UI presentation map | UI only |
-| `BLOCK_KINDS` | const | `BlockKind[]` — order shown in the "Add block" menu (note: `pause` last, not the alphabetical/server order) | UI only |
-| `CLICK_ROLES` | const | `ClickRole[]` — order shown in the role `<select>` | UI only |
-| `newBlock` | function | `(kind: BlockKind) => Block` — fresh `id`, kind-specific defaults | duplicated from server |
-| `summaryOf` | function | `(block: Block) => string` — human-readable one-line summary used in compact views | UI only |
+| Symbol               | Kind      | Signature / shape                                                                                                                | Stability                     |
+| -------------------- | --------- | -------------------------------------------------------------------------------------------------------------------------------- | ----------------------------- |
+| `BlockKind`          | type      | `"navigate" \| "goal" \| "pause" \| "click" \| "fill" \| "extract" \| "verify" \| "questionnaire" \| "for_each"`                 | persisted — must match server |
+| `ClickRole`          | type      | `"any" \| "button" \| "link" \| "tab" \| "menuitem" \| "checkbox" \| "radio" \| "switch" \| "combobox" \| "option" \| "textbox"` | must match server             |
+| `BaseBlock`          | interface | `{ id: string; kind: BlockKind; pauseAfter?: boolean }`                                                                          | must match server             |
+| `NavigateBlock`      | interface | `BaseBlock & { kind: "navigate"; url: string }`                                                                                  | persisted                     |
+| `GoalBlock`          | interface | `BaseBlock & { kind: "goal"; description: string; max_steps?: number }`                                                          | persisted                     |
+| `PauseBlock`         | interface | `BaseBlock & { kind: "pause"; message?: string }`                                                                                | persisted                     |
+| `ClickBlock`         | interface | `BaseBlock & { kind: "click"; target: string; role?: ClickRole }`                                                                | persisted                     |
+| `FillBlock`          | interface | `BaseBlock & { kind: "fill"; target: string; value: string }`                                                                    | persisted                     |
+| `ExtractBlock`       | interface | `BaseBlock & { kind: "extract"; target: string; var_name: string }`                                                              | persisted                     |
+| `VerifyBlock`        | interface | `BaseBlock & { kind: "verify"; condition: string; on_fail?: "halt" \| "pause" }`                                                 | persisted                     |
+| `QuestionnaireBlock` | interface | `BaseBlock & { kind: "questionnaire"; context?: string; unanswered_var?: string }`                                               | persisted                     |
+| `ForEachBlock`       | interface | `BaseBlock & { kind: "for_each"; items: string; item_var?: string; body: Block[] }`                                              | persisted                     |
+| `Block`              | type      | discriminated union over `kind`                                                                                                  | persisted                     |
+| `blockMeta`          | function  | `(kind: BlockKind) => { label: string; icon: string; color: string; description: string }` — UI presentation map                 | UI only                       |
+| `BLOCK_KINDS`        | const     | `BlockKind[]` — order shown in the "Add block" menu (note: `pause` last, not the alphabetical/server order)                      | UI only                       |
+| `CLICK_ROLES`        | const     | `ClickRole[]` — order shown in the role `<select>`                                                                               | UI only                       |
+| `newBlock`           | function  | `(kind: BlockKind) => Block` — fresh `id`, kind-specific defaults                                                                | duplicated from server        |
+| `summaryOf`          | function  | `(block: Block) => string` — human-readable one-line summary used in compact views                                               | UI only                       |
 
 ### `blockMeta(kind)` shape
 
@@ -81,17 +82,17 @@ This module never throws. `newBlock`'s switch is exhaustive over `BlockKind`; `s
 
 There are no tests for this module yet.
 
-| Spec section / claim | Test file | Test name | Status |
-|---|---|---|---|
-| §3 every `BlockKind` value is constructable via `newBlock` | — | `newBlock: handles every BlockKind exhaustively` | TODO(test) |
-| §3 `newBlock` returns distinct ids across calls | — | `newBlock: ids are unique across calls` | TODO(test) |
-| §3 fallback id path used when `crypto.randomUUID` is absent | — | `newBlock: falls back without crypto.randomUUID` | TODO(test) |
-| §2 `summaryOf` is total over the union | — | `summaryOf: returns non-empty for every kind` | TODO(test) |
-| §2 `summaryOf` truncation rules per kind | — | `summaryOf: 200-char and 60-char truncations apply` | TODO(test) |
-| §2 `blockMeta` returns metadata for every kind | — | `blockMeta: every BlockKind resolves` | TODO(test) |
-| §3 `BLOCK_KINDS` covers every `BlockKind` (set equality) | — | `BLOCK_KINDS: set-equal to BlockKind union` | TODO(test) |
-| §6 web↔server type union parity | — | `web Block union matches server Block union` (cross-package type test) | TODO(test) |
-| §6 web↔server `newBlock` defaults parity | — | `web newBlock defaults match server newBlock defaults` | TODO(test) |
+| Spec section / claim                                        | Test file | Test name                                                              | Status     |
+| ----------------------------------------------------------- | --------- | ---------------------------------------------------------------------- | ---------- |
+| §3 every `BlockKind` value is constructable via `newBlock`  | —         | `newBlock: handles every BlockKind exhaustively`                       | TODO(test) |
+| §3 `newBlock` returns distinct ids across calls             | —         | `newBlock: ids are unique across calls`                                | TODO(test) |
+| §3 fallback id path used when `crypto.randomUUID` is absent | —         | `newBlock: falls back without crypto.randomUUID`                       | TODO(test) |
+| §2 `summaryOf` is total over the union                      | —         | `summaryOf: returns non-empty for every kind`                          | TODO(test) |
+| §2 `summaryOf` truncation rules per kind                    | —         | `summaryOf: 200-char and 60-char truncations apply`                    | TODO(test) |
+| §2 `blockMeta` returns metadata for every kind              | —         | `blockMeta: every BlockKind resolves`                                  | TODO(test) |
+| §3 `BLOCK_KINDS` covers every `BlockKind` (set equality)    | —         | `BLOCK_KINDS: set-equal to BlockKind union`                            | TODO(test) |
+| §6 web↔server type union parity                             | —         | `web Block union matches server Block union` (cross-package type test) | TODO(test) |
+| §6 web↔server `newBlock` defaults parity                    | —         | `web newBlock defaults match server newBlock defaults`                 | TODO(test) |
 
 ### Deliberately not tested (here)
 
@@ -102,23 +103,23 @@ There are no tests for this module yet.
 
 ### Drift table — `web/src/blocks.ts` vs `server/src/blocks.ts`
 
-| Concern | Server | Web | Notes |
-|---|---|---|---|
-| `BlockKind` union | 9 kinds | 9 kinds | ✅ Identical. |
-| `ClickRole` union | 11 values | 11 values | ✅ Identical. |
-| `BaseBlock` shape | `{ id, kind, pauseAfter? }` | `{ id, kind, pauseAfter? }` | ✅ Identical. |
-| Per-kind interface fields | matches | matches | ✅ Field names, types, optionality all match. |
-| `newBlock` defaults | identical values | identical values | ✅ But re-implemented, not imported. |
-| UUID source | `node:crypto.randomUUID` | `crypto.randomUUID` with `Math.random`+`Date.now` fallback | ⚠️ Fallback is non-UUID; relies on saved-block id being client-generated only. |
-| `instructionToBlocks` | exported | NOT present | server-only — UI does not migrate legacy text. |
-| `parseBlocks` | exported | NOT present | server-only — UI receives `Block[]` from API. |
-| `substituteVars` | exported | NOT present | server-only — substitution happens in executor. |
-| `countBlocks` / `walkBlocks` | exported | NOT present | server-only walkers. |
-| `KIND_META` / `blockMeta` | NOT present | exported | web-only — UI presentation. |
-| `BLOCK_KINDS` | NOT present | exported (custom order) | web-only — menu ordering. |
-| `CLICK_ROLES` (runtime array) | NOT present (only the type) | exported | web-only — `<select>` options. |
-| `summaryOf` | NOT present (server uses `blockSummary` in `agent.ts`) | exported | web-only; subtly different output than server's `blockSummary`. |
-| JSDoc comments | present on most fields | none | doc-only drift; no behavioural impact. |
+| Concern                       | Server                                                 | Web                                                        | Notes                                                                          |
+| ----------------------------- | ------------------------------------------------------ | ---------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| `BlockKind` union             | 9 kinds                                                | 9 kinds                                                    | ✅ Identical.                                                                  |
+| `ClickRole` union             | 11 values                                              | 11 values                                                  | ✅ Identical.                                                                  |
+| `BaseBlock` shape             | `{ id, kind, pauseAfter? }`                            | `{ id, kind, pauseAfter? }`                                | ✅ Identical.                                                                  |
+| Per-kind interface fields     | matches                                                | matches                                                    | ✅ Field names, types, optionality all match.                                  |
+| `newBlock` defaults           | identical values                                       | identical values                                           | ✅ But re-implemented, not imported.                                           |
+| UUID source                   | `node:crypto.randomUUID`                               | `crypto.randomUUID` with `Math.random`+`Date.now` fallback | ⚠️ Fallback is non-UUID; relies on saved-block id being client-generated only. |
+| `instructionToBlocks`         | exported                                               | NOT present                                                | server-only — UI does not migrate legacy text.                                 |
+| `parseBlocks`                 | exported                                               | NOT present                                                | server-only — UI receives `Block[]` from API.                                  |
+| `substituteVars`              | exported                                               | NOT present                                                | server-only — substitution happens in executor.                                |
+| `countBlocks` / `walkBlocks`  | exported                                               | NOT present                                                | server-only walkers.                                                           |
+| `KIND_META` / `blockMeta`     | NOT present                                            | exported                                                   | web-only — UI presentation.                                                    |
+| `BLOCK_KINDS`                 | NOT present                                            | exported (custom order)                                    | web-only — menu ordering.                                                      |
+| `CLICK_ROLES` (runtime array) | NOT present (only the type)                            | exported                                                   | web-only — `<select>` options.                                                 |
+| `summaryOf`                   | NOT present (server uses `blockSummary` in `agent.ts`) | exported                                                   | web-only; subtly different output than server's `blockSummary`.                |
+| JSDoc comments                | present on most fields                                 | none                                                       | doc-only drift; no behavioural impact.                                         |
 
 ### Open notes
 

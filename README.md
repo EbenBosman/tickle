@@ -10,11 +10,11 @@ This is a **single-user local tool**. It is not designed to be exposed to the in
 
 Tickle is OS-agnostic. The repo is developed on Windows but targeted to also run on a Mac mini (primary deployment) and any modern Linux. Anything OS-specific is called out where it appears.
 
-| Platform | Status                | Notes                                                                 |
-|----------|-----------------------|-----------------------------------------------------------------------|
-| macOS    | first-class (Apple Silicon target) | Mac mini M-series. Unified memory governs how big a model fits.       |
-| Linux    | first-class           | Tested on recent Ubuntu/Fedora with NVIDIA or AMD GPUs.               |
-| Windows  | first-class (current dev box) | RTX 4080 (16 GB VRAM) tested. Use PowerShell or any POSIX shell (Git Bash, WSL). |
+| Platform | Status                             | Notes                                                                            |
+| -------- | ---------------------------------- | -------------------------------------------------------------------------------- |
+| macOS    | first-class (Apple Silicon target) | Mac mini M-series. Unified memory governs how big a model fits.                  |
+| Linux    | first-class                        | Tested on recent Ubuntu/Fedora with NVIDIA or AMD GPUs.                          |
+| Windows  | first-class (current dev box)      | RTX 4080 (16 GB VRAM) tested. Use PowerShell or any POSIX shell (Git Bash, WSL). |
 
 Avoid baking absolute paths into specs, scripts, or commits — use repo-relative paths so the same instructions work on every host.
 
@@ -22,7 +22,7 @@ Avoid baking absolute paths into specs, scripts, or commits — use repo-relativ
 
 - **Node 22.5+** (uses the built-in `node:sqlite`; on Node 24+ the `ExperimentalWarning` goes away).
 - **An OpenAI-compatible LLM server, running locally.** Default config points at LM Studio.
-  - **LM Studio** *(default)* — load `qwen3.6-27b-uncensored-hauhaucs-balanced` (or any vision + tool-call capable model), enable the local server on port 1234, that's it. Defaults match.
+  - **LM Studio** _(default)_ — load `qwen3.6-27b-uncensored-hauhaucs-balanced` (or any vision + tool-call capable model), enable the local server on port 1234, that's it. Defaults match.
   - **Ollama** — `ollama pull qwen3.6:27b` (or your preferred model), then set `LLM_BASE_URL=http://127.0.0.1:11434/v1` and `LLM_MODEL=<name>` in `server/.env`.
   - **vLLM, SGLang, llama.cpp server, etc.** — point `LLM_BASE_URL` at their `/v1` endpoint.
 - **Playwright Chromium** — installs on first server boot, or run `npx playwright install chromium` once up front.
@@ -31,13 +31,13 @@ Avoid baking absolute paths into specs, scripts, or commits — use repo-relativ
 
 The agent sends a screenshot on every tool result, so the LLM needs vision. The model also needs native tool-calling. A 27B-class model (e.g. qwen3.6-27b in 4-bit) is the sweet spot for both quality and latency on prosumer hardware.
 
-| Machine                          | What fits comfortably                                |
-|----------------------------------|------------------------------------------------------|
-| RTX 4080 (16 GB VRAM)            | qwen3.6-27b at Q3_K_M / Q4_K_S; partial offload at Q4_K_M. Watch context — large windows eat VRAM fast. |
+| Machine                                         | What fits comfortably                                                                                                                  |
+| ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| RTX 4080 (16 GB VRAM)                           | qwen3.6-27b at Q3_K_M / Q4_K_S; partial offload at Q4_K_M. Watch context — large windows eat VRAM fast.                                |
 | **Mac mini M-series, 16 GB unified (baseline)** | **Don't run inference here.** macOS + Chromium leave ~6–8 GB free; a 27B at any quant won't fit. Use remote inference (below) instead. |
-| Mac mini M-series, 24 GB unified | qwen3.6-27b at Q4_K_M is fine; leave headroom for the OS and Chromium. |
-| Mac mini M-series, 36 GB+        | Q5/Q6 quants of 27B work; don't push higher unless you have benchmarks saying it helps. |
-| Linux box with 24 GB+ VRAM       | Same as above; vLLM is faster than Ollama if you can set it up. |
+| Mac mini M-series, 24 GB unified                | qwen3.6-27b at Q4_K_M is fine; leave headroom for the OS and Chromium.                                                                 |
+| Mac mini M-series, 36 GB+                       | Q5/Q6 quants of 27B work; don't push higher unless you have benchmarks saying it helps.                                                |
+| Linux box with 24 GB+ VRAM                      | Same as above; vLLM is faster than Ollama if you can set it up.                                                                        |
 
 If the model is unloading layers to RAM the agent feels sluggish but still works. If you're swapping to disk, drop a quant.
 
@@ -137,12 +137,12 @@ The same lines also stream to the dev terminal in compact form.
 The agent uses a **snapshot → act** loop, not hand-written CSS selectors:
 
 1. `snapshot()` walks the DOM, finds every visible interactive element (buttons, links, tabs, inputs, anything with a clickable role), tags each with `data-tickle-id`, and returns a labeled list to the model:
-    ```
-    [0] tab "Projects" (selected)
-    [1] tab "Qualifications"
-    [3] textbox "Search"
-    [12] link "Buy now"
-    ```
+   ```
+   [0] tab "Projects" (selected)
+   [1] tab "Qualifications"
+   [3] textbox "Search"
+   [12] link "Buy now"
+   ```
    Plus a screenshot taken at the same moment.
 2. `act(id, action, value?)` performs the action on the element with that id. Actions: `click`, `fill`, `press`, `check`, `uncheck`, `hover`, `select_option`.
 

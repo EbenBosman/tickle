@@ -14,20 +14,21 @@ The Claude Rescue feature (a fallback agent that takes over when a local-LLM blo
 
 ### Exports
 
-| Symbol           | Kind     | Signature / shape                              | Stability |
-|------------------|----------|------------------------------------------------|-----------|
-| `settingsRoutes` | function | `(app: FastifyInstance) => Promise<void>`     | stable    |
+| Symbol           | Kind     | Signature / shape                         | Stability |
+| ---------------- | -------- | ----------------------------------------- | --------- |
+| `settingsRoutes` | function | `(app: FastifyInstance) => Promise<void>` | stable    |
 
 ### HTTP surface
 
-| Method | Path                    | Request body                                                         | Success response                              | Errors                                |
-|--------|-------------------------|----------------------------------------------------------------------|-----------------------------------------------|---------------------------------------|
-| GET    | `/api/settings`         | —                                                                    | `200 SettingsResponse`                        | —                                     |
-| PUT    | `/api/settings`         | `{ rescue_enabled?: boolean; rescue_model?: string; rescue_on_cancel?: boolean }` | `200 SettingsResponse` (post-write read-back) | `400 { error: "empty body" }` if body missing; `400 { error: "unknown model: …" }` if `rescue_model` not in allowlist |
-| GET    | `/api/lessons`          | query: `?offset=0&limit=50` (limit clamped to 200)                   | `200 { lessons: Lesson[]; total: number }`    | —                                     |
-| DELETE | `/api/lessons/:id`      | —                                                                    | `200 { ok: true }`                            | None — silently no-ops on unknown id  |
+| Method | Path               | Request body                                                                      | Success response                              | Errors                                                                                                                |
+| ------ | ------------------ | --------------------------------------------------------------------------------- | --------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/api/settings`    | —                                                                                 | `200 SettingsResponse`                        | —                                                                                                                     |
+| PUT    | `/api/settings`    | `{ rescue_enabled?: boolean; rescue_model?: string; rescue_on_cancel?: boolean }` | `200 SettingsResponse` (post-write read-back) | `400 { error: "empty body" }` if body missing; `400 { error: "unknown model: …" }` if `rescue_model` not in allowlist |
+| GET    | `/api/lessons`     | query: `?offset=0&limit=50` (limit clamped to 200)                                | `200 { lessons: Lesson[]; total: number }`    | —                                                                                                                     |
+| DELETE | `/api/lessons/:id` | —                                                                                 | `200 { ok: true }`                            | None — silently no-ops on unknown id                                                                                  |
 
 `SettingsResponse` shape:
+
 ```
 {
   rescue_enabled: boolean,        // getSetting("rescue_enabled") === "true"
@@ -40,20 +41,20 @@ The Claude Rescue feature (a fallback agent that takes over when a local-LLM blo
 
 ### Settings keys
 
-| Key                 | Default            | Acceptable values                                           | Storage form    | Consumer                                                     |
-|---------------------|--------------------|-------------------------------------------------------------|-----------------|--------------------------------------------------------------|
-| `rescue_enabled`    | `"false"`          | `"true"` or `"false"` (string-encoded boolean)              | TEXT            | `agent.ts:185` — read once at `runAgent` start.              |
-| `rescue_model`      | `"claude-sonnet-4-6"` | One of: `"claude-haiku-4-5-20251001"`, `"claude-sonnet-4-6"`, `"claude-opus-4-7"` (PUT-time allowlist `VALID_MODELS`) | TEXT            | `agent.ts:186` (run-start), `agent.ts:1409` (re-read inside `runClaudeRescue`). |
-| `rescue_on_cancel`  | `"false"`          | `"true"` or `"false"`                                       | TEXT            | `agent.ts:187` — read once at run start.                     |
+| Key                | Default               | Acceptable values                                                                                                     | Storage form | Consumer                                                                        |
+| ------------------ | --------------------- | --------------------------------------------------------------------------------------------------------------------- | ------------ | ------------------------------------------------------------------------------- |
+| `rescue_enabled`   | `"false"`             | `"true"` or `"false"` (string-encoded boolean)                                                                        | TEXT         | `agent.ts:185` — read once at `runAgent` start.                                 |
+| `rescue_model`     | `"claude-sonnet-4-6"` | One of: `"claude-haiku-4-5-20251001"`, `"claude-sonnet-4-6"`, `"claude-opus-4-7"` (PUT-time allowlist `VALID_MODELS`) | TEXT         | `agent.ts:186` (run-start), `agent.ts:1409` (re-read inside `runClaudeRescue`). |
+| `rescue_on_cancel` | `"false"`             | `"true"` or `"false"`                                                                                                 | TEXT         | `agent.ts:187` — read once at run start.                                        |
 
 Defaults are seeded once at DB open (`db.ts:125`, `INSERT OR IGNORE`) — they are real DB rows, not response-side fallbacks. The `?? "claude-sonnet-4-6"` in both routes and `agent.ts` is belt-and-braces against a future where the row is deleted manually.
 
 ### Errors
 
-| Error                              | Returned when                                                  | Caller should…                                          |
-|------------------------------------|----------------------------------------------------------------|---------------------------------------------------------|
-| `400 { error: "empty body" }`      | PUT `/api/settings` with no body                               | Surface to user; SettingsPage never sends empty bodies. |
-| `400 { error: "unknown model: X" }`| PUT `rescue_model` not in `VALID_MODELS`                       | Surface; UI's radio group prevents this.                |
+| Error                               | Returned when                            | Caller should…                                          |
+| ----------------------------------- | ---------------------------------------- | ------------------------------------------------------- |
+| `400 { error: "empty body" }`       | PUT `/api/settings` with no body         | Surface to user; SettingsPage never sends empty bodies. |
+| `400 { error: "unknown model: X" }` | PUT `rescue_model` not in `VALID_MODELS` | Surface; UI's radio group prevents this.                |
 
 ## 3. Invariants
 
@@ -68,24 +69,24 @@ Defaults are seeded once at DB open (`db.ts:125`, `INSERT OR IGNORE`) — they a
 ## 4. How (briefly)
 
 - **Routes-as-thin-shim.** Six lines of logic per endpoint; all real persistence is in `db.ts`. The route layer's only jobs are: HTTP shape, allowlist enforcement on `rescue_model`, env-var probe for `api_key_configured`, and lesson-count side query.
-- **Settings keys are open at the DB layer, allowlisted at the HTTP layer.** `getSetting`/`setSetting` accept any string key; this route only exposes three. New keys require both seeding in `db.ts:SETTING_DEFAULTS` *and* explicit handling here. There is no enumeration endpoint listing all keys.
-- **Side-effect timing for runs.** `agent.ts` reads all three settings *once* at `runAgent` entry (lines 185–187) and captures them into `ctx`. A PUT during a live run does **not** affect the running agent — except `rescue_model`, which is re-read inside `runClaudeRescue` (line 1409) on each rescue invocation. Practical effect: toggling `rescue_enabled` mid-run is ignored; switching `rescue_model` mid-run takes effect on the next failed block. See §6 drift.
+- **Settings keys are open at the DB layer, allowlisted at the HTTP layer.** `getSetting`/`setSetting` accept any string key; this route only exposes three. New keys require both seeding in `db.ts:SETTING_DEFAULTS` _and_ explicit handling here. There is no enumeration endpoint listing all keys.
+- **Side-effect timing for runs.** `agent.ts` reads all three settings _once_ at `runAgent` entry (lines 185–187) and captures them into `ctx`. A PUT during a live run does **not** affect the running agent — except `rescue_model`, which is re-read inside `runClaudeRescue` (line 1409) on each rescue invocation. Practical effect: toggling `rescue_enabled` mid-run is ignored; switching `rescue_model` mid-run takes effect on the next failed block. See §6 drift.
 - **Lesson endpoints colocated by UI screen.** `/api/lessons` GET/DELETE live here, not in a dedicated `routes/lessons.ts`, because the Settings page is the only consumer (export uses a separate route).
 
 ## 5. How tested
 
-| Spec section / claim                                       | Test file | Test name | Status     |
-|------------------------------------------------------------|-----------|-----------|------------|
-| §2 GET shape                                               | —         | —         | TODO(test) |
-| §2 PUT 400 on empty body                                   | —         | —         | TODO(test) |
-| §2 PUT 400 on unknown `rescue_model`                       | —         | —         | TODO(test) |
-| §3 I1 boolean round-trip                                   | —         | —         | TODO(test) |
-| §3 I2 model not validated on read path (drift candidate)   | —         | —         | TODO(test) |
-| §3 I3 partial PUT leaves omitted fields untouched          | —         | —         | TODO(test) |
-| §3 I3 wrong-type field silently ignored                    | —         | —         | TODO(test) |
-| §3 I5 `api_key_configured` from env, not DB                | —         | —         | TODO(test) |
-| §3 I6 `/api/lessons` limit clamp at 200                    | —         | —         | TODO(test) |
-| §3 I7 DELETE lessons idempotency                           | —         | —         | TODO(test) |
+| Spec section / claim                                        | Test file | Test name | Status                   |
+| ----------------------------------------------------------- | --------- | --------- | ------------------------ |
+| §2 GET shape                                                | —         | —         | TODO(test)               |
+| §2 PUT 400 on empty body                                    | —         | —         | TODO(test)               |
+| §2 PUT 400 on unknown `rescue_model`                        | —         | —         | TODO(test)               |
+| §3 I1 boolean round-trip                                    | —         | —         | TODO(test)               |
+| §3 I2 model not validated on read path (drift candidate)    | —         | —         | TODO(test)               |
+| §3 I3 partial PUT leaves omitted fields untouched           | —         | —         | TODO(test)               |
+| §3 I3 wrong-type field silently ignored                     | —         | —         | TODO(test)               |
+| §3 I5 `api_key_configured` from env, not DB                 | —         | —         | TODO(test)               |
+| §3 I6 `/api/lessons` limit clamp at 200                     | —         | —         | TODO(test)               |
+| §3 I7 DELETE lessons idempotency                            | —         | —         | TODO(test)               |
 | §4 mid-run setting changes do not affect already-active run | —         | —         | TODO(test) — integration |
 
 ### Deliberately not tested

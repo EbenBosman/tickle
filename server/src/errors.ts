@@ -8,23 +8,26 @@
  * is small enough to inline, but keeping it named makes the test
  * surface explicit.
  *
- * Never throws — any failure path inside falls back to `String(value)`.
+ * Never throws.
  */
 export function errorMessageFromThrow(value: unknown): string {
   if (value instanceof Error) return value.message || "Error";
   if (typeof value === "string") return value;
   if (value === null) return "null";
   if (value === undefined) return "undefined";
-  // Primitives stringify cleanly.
-  if (typeof value !== "object" && typeof value !== "function") {
+  if (typeof value === "number" || typeof value === "bigint" || typeof value === "boolean") {
     return String(value);
   }
-  // Objects (including arrays): try JSON first, fall back to String().
+  if (typeof value === "symbol") return value.toString();
+  if (typeof value === "function") return `[Function: ${value.name || "anonymous"}]`;
+  // Objects (including arrays). Try JSON first; fall back to a typed
+  // toString tag so the message is at least informative for the
+  // BigInt-member / circular-reference cases.
   try {
     const json = JSON.stringify(value);
-    if (json === undefined) return String(value);
-    return json;
+    if (json !== undefined) return json;
   } catch {
-    return String(value);
+    // fall through to the toString tag below
   }
+  return Object.prototype.toString.call(value);
 }

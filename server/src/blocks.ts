@@ -142,7 +142,7 @@ export function parseBlocks(json: string | null | undefined, fallbackInstruction
     return fallbackInstruction.trim() ? instructionToBlocks(fallbackInstruction) : [];
   }
   try {
-    const parsed = JSON.parse(json);
+    const parsed: unknown = JSON.parse(json);
     return Array.isArray(parsed) ? (parsed as Block[]) : [];
   } catch {
     return fallbackInstruction.trim() ? instructionToBlocks(fallbackInstruction) : [];

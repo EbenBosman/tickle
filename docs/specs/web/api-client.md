@@ -16,38 +16,38 @@ The frontend speaks to the Fastify server through exactly one module: this one. 
 
 ### Exports
 
-| Symbol               | Kind   | Signature / shape                                                                                  | Stability |
-|----------------------|--------|----------------------------------------------------------------------------------------------------|-----------|
-| `Task`               | type   | `{ id, name, instruction, steps: string \| null, created_at }` (steps is JSON-encoded `Block[]`)   | mirrors `server/src/db.ts`; ⚠️ duplication |
-| `Run`                | type   | `{ id, task_id, status: "running"\|"done"\|"error"\|"cancelled", result, error, started_at, finished_at, is_paused? }` | mirrors `server/src/db.ts`; ⚠️ duplication |
-| `Step`               | type   | `{ id, run_id, idx, kind: "thought"\|"tool_call"\|"tool_result"\|"error"\|"final", payload: string, screenshot_path, created_at }` | ⚠️ kind union narrower than server (see §6) |
-| `Settings`           | type   | `{ rescue_enabled, rescue_model, rescue_on_cancel, api_key_configured, lesson_count }`             | matches `http-settings.md` §2 |
-| `Lesson`             | type   | `{ id, run_id, block_id, lesson, situation, created_at }`                                          | stable |
-| `api`                | const  | object literal with the methods below; not a class                                                  | stable |
+| Symbol     | Kind  | Signature / shape                                                                                                                  | Stability                                   |
+| ---------- | ----- | ---------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
+| `Task`     | type  | `{ id, name, instruction, steps: string \| null, created_at }` (steps is JSON-encoded `Block[]`)                                   | mirrors `server/src/db.ts`; ⚠️ duplication  |
+| `Run`      | type  | `{ id, task_id, status: "running"\|"done"\|"error"\|"cancelled", result, error, started_at, finished_at, is_paused? }`             | mirrors `server/src/db.ts`; ⚠️ duplication  |
+| `Step`     | type  | `{ id, run_id, idx, kind: "thought"\|"tool_call"\|"tool_result"\|"error"\|"final", payload: string, screenshot_path, created_at }` | ⚠️ kind union narrower than server (see §6) |
+| `Settings` | type  | `{ rescue_enabled, rescue_model, rescue_on_cancel, api_key_configured, lesson_count }`                                             | matches `http-settings.md` §2               |
+| `Lesson`   | type  | `{ id, run_id, block_id, lesson, situation, created_at }`                                                                          | stable                                      |
+| `api`      | const | object literal with the methods below; not a class                                                                                 | stable                                      |
 
 ### Function table — client method ↔ server endpoint
 
-| Client method | HTTP call | Server spec | Returns | Notes |
-|---|---|---|---|---|
-| `api.listTasks()` | `GET /api/tasks` | `http-tasks` §2 | `Task[]` | newest first |
-| `api.getTask(id)` | `GET /api/tasks/:id` | `http-tasks` §2 | `Task` | 404 → throw |
-| `api.createTask(name, instruction)` | `POST /api/tasks` body `{ name, instruction }` | `http-tasks` §2 | `Task` | does **not** send `steps` |
-| `api.updateTask(id, patch)` | `PUT /api/tasks/:id` body `{ name?, instruction?, steps? }` | `http-tasks` §2 | `Task` | partial; `steps` is `Block[]` (JSON-stringified by `JSON.stringify(patch)`) |
-| `api.deleteTask(id)` | `DELETE /api/tasks/:id` | `http-tasks` §2 | `unknown` | server always 200 (idempotent) |
-| `api.startRun(taskId)` | `POST /api/tasks/:id/run` | `http-runs` §2 | `{ run_id: number }` | |
-| `api.cancelRun(runId)` | `POST /api/runs/:id/cancel` | `http-runs` §2 | `{ ok: boolean }` | client discards `mode` field returned by server |
-| `api.pauseRun(runId)` | `POST /api/runs/:id/pause` | `http-runs` §2 | `{ ok: boolean }` | |
-| `api.resumeRun(runId)` | `POST /api/runs/:id/resume` | `http-runs` §2 | `{ ok: boolean }` | |
-| `api.deleteRun(runId)` | `DELETE /api/runs/:id` | `http-runs` §2 | `{ ok: boolean }` | server returns `screenshots_removed` too — discarded |
-| `api.clearTaskRuns(taskId, opts?)` | `DELETE /api/tasks/:taskId/runs?force&reset_ids` | `http-runs` §2 | `{ ok, deleted, forced }` | **special-cases 409** (see Errors below); discards `screenshots_removed` |
-| `api.compileBlocks(prompt)` | `POST /api/blocks/compile` body `{ prompt }` | `http-compile` §2 | `{ blocks: Block[] }` | |
-| `api.listRuns(taskId)` | `GET /api/tasks/:taskId/runs` | `http-runs` §2 | `Run[]` | each row carries `is_paused` |
-| `api.getRun(runId)` | `GET /api/runs/:id` | `http-runs` §2 | `{ run, steps, pause_info }` | |
-| `api.getSettings()` | `GET /api/settings` | `http-settings` §2 | `Settings` | |
-| `api.updateSettings(patch)` | `PUT /api/settings` | `http-settings` §2 | `Settings` (read-after-write) | |
-| `api.listLessons(offset?, limit?)` | `GET /api/lessons?offset&limit` | `http-settings` §2 | `{ lessons: Lesson[]; total: number }` | defaults `offset=0`, `limit=50` |
-| `api.deleteLesson(id)` | `DELETE /api/lessons/:id` | `http-settings` §2 | `{ ok: boolean }` | idempotent server-side |
-| `api.exportTrainingData(onlyRescued?)` | `GET /api/export?status=rescued` (when true) | `http-export` §2 | `Blob` (`application/x-ndjson`) | `onlyRescued=false` omits the query param |
+| Client method                          | HTTP call                                                   | Server spec        | Returns                                | Notes                                                                       |
+| -------------------------------------- | ----------------------------------------------------------- | ------------------ | -------------------------------------- | --------------------------------------------------------------------------- |
+| `api.listTasks()`                      | `GET /api/tasks`                                            | `http-tasks` §2    | `Task[]`                               | newest first                                                                |
+| `api.getTask(id)`                      | `GET /api/tasks/:id`                                        | `http-tasks` §2    | `Task`                                 | 404 → throw                                                                 |
+| `api.createTask(name, instruction)`    | `POST /api/tasks` body `{ name, instruction }`              | `http-tasks` §2    | `Task`                                 | does **not** send `steps`                                                   |
+| `api.updateTask(id, patch)`            | `PUT /api/tasks/:id` body `{ name?, instruction?, steps? }` | `http-tasks` §2    | `Task`                                 | partial; `steps` is `Block[]` (JSON-stringified by `JSON.stringify(patch)`) |
+| `api.deleteTask(id)`                   | `DELETE /api/tasks/:id`                                     | `http-tasks` §2    | `unknown`                              | server always 200 (idempotent)                                              |
+| `api.startRun(taskId)`                 | `POST /api/tasks/:id/run`                                   | `http-runs` §2     | `{ run_id: number }`                   |                                                                             |
+| `api.cancelRun(runId)`                 | `POST /api/runs/:id/cancel`                                 | `http-runs` §2     | `{ ok: boolean }`                      | client discards `mode` field returned by server                             |
+| `api.pauseRun(runId)`                  | `POST /api/runs/:id/pause`                                  | `http-runs` §2     | `{ ok: boolean }`                      |                                                                             |
+| `api.resumeRun(runId)`                 | `POST /api/runs/:id/resume`                                 | `http-runs` §2     | `{ ok: boolean }`                      |                                                                             |
+| `api.deleteRun(runId)`                 | `DELETE /api/runs/:id`                                      | `http-runs` §2     | `{ ok: boolean }`                      | server returns `screenshots_removed` too — discarded                        |
+| `api.clearTaskRuns(taskId, opts?)`     | `DELETE /api/tasks/:taskId/runs?force&reset_ids`            | `http-runs` §2     | `{ ok, deleted, forced }`              | **special-cases 409** (see Errors below); discards `screenshots_removed`    |
+| `api.compileBlocks(prompt)`            | `POST /api/blocks/compile` body `{ prompt }`                | `http-compile` §2  | `{ blocks: Block[] }`                  |                                                                             |
+| `api.listRuns(taskId)`                 | `GET /api/tasks/:taskId/runs`                               | `http-runs` §2     | `Run[]`                                | each row carries `is_paused`                                                |
+| `api.getRun(runId)`                    | `GET /api/runs/:id`                                         | `http-runs` §2     | `{ run, steps, pause_info }`           |                                                                             |
+| `api.getSettings()`                    | `GET /api/settings`                                         | `http-settings` §2 | `Settings`                             |                                                                             |
+| `api.updateSettings(patch)`            | `PUT /api/settings`                                         | `http-settings` §2 | `Settings` (read-after-write)          |                                                                             |
+| `api.listLessons(offset?, limit?)`     | `GET /api/lessons?offset&limit`                             | `http-settings` §2 | `{ lessons: Lesson[]; total: number }` | defaults `offset=0`, `limit=50`                                             |
+| `api.deleteLesson(id)`                 | `DELETE /api/lessons/:id`                                   | `http-settings` §2 | `{ ok: boolean }`                      | idempotent server-side                                                      |
+| `api.exportTrainingData(onlyRescued?)` | `GET /api/export?status=rescued` (when true)                | `http-export` §2   | `Blob` (`application/x-ndjson`)        | `onlyRescued=false` omits the query param                                   |
 
 ### SSE / streaming surface
 
@@ -57,12 +57,12 @@ This module **does not own SSE**. `EventSource` for `GET /api/runs/:id/stream` (
 
 `j<T>(res)` is the central response unwrapper:
 
-| Condition                  | Behaviour                                                              |
-|----------------------------|------------------------------------------------------------------------|
-| `res.ok` (2xx)             | `res.json()` parsed and returned as `T`. No schema validation.         |
-| Non-2xx                    | Throws `new Error(`${status} ${await res.text()}`)`.                   |
-| Network failure (`fetch` rejects) | `fetch`'s rejection propagates unchanged (typically `TypeError: Failed to fetch`). |
-| 204 / empty body on 2xx    | `res.json()` will throw a SyntaxError. ⚠️ No 204 path is exercised today (every server route returns a JSON body), but the contract is fragile here. |
+| Condition                         | Behaviour                                                                                                                                            |
+| --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `res.ok` (2xx)                    | `res.json()` parsed and returned as `T`. No schema validation.                                                                                       |
+| Non-2xx                           | Throws `new Error(`${status} ${await res.text()}`)`.                                                                                                 |
+| Network failure (`fetch` rejects) | `fetch`'s rejection propagates unchanged (typically `TypeError: Failed to fetch`).                                                                   |
+| 204 / empty body on 2xx           | `res.json()` will throw a SyntaxError. ⚠️ No 204 path is exercised today (every server route returns a JSON body), but the contract is fragile here. |
 
 Special-case: `api.clearTaskRuns` does **not** route through `j<T>`. It inspects `res.status === 409`, parses the JSON body, and throws a decorated error: `Object.assign(new Error(body.error ?? "runs still active"), { status: 409, active: body.active })`. Callers (`App.tsx` "Clear all runs" path) read `err.status === 409` to offer a "force" retry. This is the **only** typed-error path in the module.
 
@@ -89,16 +89,16 @@ Special-case: `api.clearTaskRuns` does **not** route through `j<T>`. It inspects
 
 ## 5. How tested
 
-| Spec section / claim | Test file | Test name | Status |
-|---|---|---|---|
-| §2 each `api.*` method hits the documented endpoint with the documented method | — | — | TODO(test) |
-| §2 `clearTaskRuns` 409 throws Error with `status` and `active` fields | — | — | TODO(test) |
-| §2 `exportTrainingData(true)` appends `?status=rescued`; `false` omits | — | — | TODO(test) |
-| §3 I1 no absolute `http://` URLs anywhere | — | — | TODO(test) — static |
-| §3 I2 non-2xx throws Error whose message starts with status code | — | — | TODO(test) |
-| §3 I3 JSON `content-type` header on all POST/PUT-with-body methods | — | — | TODO(test) |
-| §3 I7 import graph: only project import is `./blocks.ts` | — | — | TODO(test) — static |
-| §2 `j<T>` on empty 204 body — fragile, see §6 | — | — | TODO(test) — currently no 204 server path |
+| Spec section / claim                                                           | Test file | Test name | Status                                    |
+| ------------------------------------------------------------------------------ | --------- | --------- | ----------------------------------------- |
+| §2 each `api.*` method hits the documented endpoint with the documented method | —         | —         | TODO(test)                                |
+| §2 `clearTaskRuns` 409 throws Error with `status` and `active` fields          | —         | —         | TODO(test)                                |
+| §2 `exportTrainingData(true)` appends `?status=rescued`; `false` omits         | —         | —         | TODO(test)                                |
+| §3 I1 no absolute `http://` URLs anywhere                                      | —         | —         | TODO(test) — static                       |
+| §3 I2 non-2xx throws Error whose message starts with status code               | —         | —         | TODO(test)                                |
+| §3 I3 JSON `content-type` header on all POST/PUT-with-body methods             | —         | —         | TODO(test)                                |
+| §3 I7 import graph: only project import is `./blocks.ts`                       | —         | —         | TODO(test) — static                       |
+| §2 `j<T>` on empty 204 body — fragile, see §6                                  | —         | —         | TODO(test) — currently no 204 server path |
 
 ### Deliberately not tested
 

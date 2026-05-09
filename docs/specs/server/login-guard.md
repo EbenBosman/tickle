@@ -7,6 +7,7 @@
 The agent must never attempt to type passwords, complete MFA challenges, solve CAPTCHAs, or use the human's passkeys. When the live page is a login surface, control belongs to the human. The login guard is a cheap, run-time heuristic that inspects the current page and, if it concludes "this is a login," signals the executor to pause the run. The pause is **one-shot per run** because once the human resumes, the page is by definition no longer a login from the agent's perspective — re-firing on the same surface would deadlock.
 
 > **Non-obvious why:**
+>
 > - Protects the **user** (no autonomous bot trying to log in as them, no leaked secrets in tool calls / traces / screenshots).
 > - Protects the **run** (LLM tool-call budget is not burned flailing at unsolvable challenges like webauthn).
 > - Heuristics over an allowlist + DOM probes are necessary because login surfaces are not standardised; this is intentionally fuzzy.
@@ -16,22 +17,23 @@ The agent must never attempt to type passwords, complete MFA challenges, solve C
 
 ### Exports
 
-| Symbol               | Kind     | Signature / shape                                                                 | Stability |
-|----------------------|----------|-----------------------------------------------------------------------------------|-----------|
-| `detectLoginPrompt`  | function | `(page: Page) => Promise<LoginDetection>`                                         | stable    |
-| `LoginDetection`     | type     | `{ detected: false } \| { detected: true; reason: string }`                       | stable    |
+| Symbol              | Kind     | Signature / shape                                           | Stability |
+| ------------------- | -------- | ----------------------------------------------------------- | --------- |
+| `detectLoginPrompt` | function | `(page: Page) => Promise<LoginDetection>`                   | stable    |
+| `LoginDetection`    | type     | `{ detected: false } \| { detected: true; reason: string }` | stable    |
 
 `Page` is a Playwright `Page`. The function:
+
 - MUST NOT navigate, click, type, or otherwise mutate the page.
-- MUST NOT throw under normal conditions (malformed URL, detached page, evaluate failure → returns `{ detected: false }` rather than throwing). *(see §6 — current code throws on `page.evaluate` failure.)*
+- MUST NOT throw under normal conditions (malformed URL, detached page, evaluate failure → returns `{ detected: false }` rather than throwing). _(see §6 — current code throws on `page.evaluate` failure.)_
 - MUST be safe to call repeatedly within a single tick (idempotent, side-effect free).
 - The `reason` string is human-readable; it is surfaced in the SSE `paused` event and is part of the user-visible UI. Format is **not** part of the stable contract — callers must not parse it.
 
 ### Errors
 
-| Error             | Returned when                              | Caller should…                              |
-|-------------------|--------------------------------------------|---------------------------------------------|
-| (none)            | function returns `{detected:false}` instead | proceed normally                            |
+| Error  | Returned when                               | Caller should…   |
+| ------ | ------------------------------------------- | ---------------- |
+| (none) | function returns `{detected:false}` instead | proceed normally |
 
 ### HTTP / SSE / IPC surface
 
@@ -83,18 +85,18 @@ Three-stage cascade, cheapest first, returns on first hit:
 
 ## 5. How tested
 
-| Spec section / claim                            | Test file | Test name | Status |
-|-------------------------------------------------|-----------|-----------|--------|
-| §3.1 each SSO host triggers detection           | —         | —         | TODO(test) |
-| §3.2 each path-gated host triggers only on login paths | — | —         | TODO(test) |
-| §3.2 path-gated host on non-login path returns `{detected:false}` | — | — | TODO(test) |
-| §3.3 visible `<input type=password>` triggers   | —         | —         | TODO(test) |
-| §3.4 hidden password input does NOT trigger (display:none, visibility:hidden, opacity:0, zero-rect, offscreen-non-rendered) | — | — | TODO(test) |
-| §3.5 webauthn / one-time-code autocomplete triggers when visible, not when hidden | — | — | TODO(test) |
-| §3.6 each passkey phrase triggers; benign text doesn't | — | —     | TODO(test) |
-| §3.7 `about:blank` and unparseable URL → `{detected:false}` | — | — | TODO(test) |
-| §3.8 calling does not mutate page (snapshot before/after equal) | — | — | TODO(test) |
-| §3.9 calling twice is stable                    | —         | —         | TODO(test) |
+| Spec section / claim                                                                                                        | Test file | Test name | Status     |
+| --------------------------------------------------------------------------------------------------------------------------- | --------- | --------- | ---------- |
+| §3.1 each SSO host triggers detection                                                                                       | —         | —         | TODO(test) |
+| §3.2 each path-gated host triggers only on login paths                                                                      | —         | —         | TODO(test) |
+| §3.2 path-gated host on non-login path returns `{detected:false}`                                                           | —         | —         | TODO(test) |
+| §3.3 visible `<input type=password>` triggers                                                                               | —         | —         | TODO(test) |
+| §3.4 hidden password input does NOT trigger (display:none, visibility:hidden, opacity:0, zero-rect, offscreen-non-rendered) | —         | —         | TODO(test) |
+| §3.5 webauthn / one-time-code autocomplete triggers when visible, not when hidden                                           | —         | —         | TODO(test) |
+| §3.6 each passkey phrase triggers; benign text doesn't                                                                      | —         | —         | TODO(test) |
+| §3.7 `about:blank` and unparseable URL → `{detected:false}`                                                                 | —         | —         | TODO(test) |
+| §3.8 calling does not mutate page (snapshot before/after equal)                                                             | —         | —         | TODO(test) |
+| §3.9 calling twice is stable                                                                                                | —         | —         | TODO(test) |
 
 **Recommended test setup:** Playwright fixtures with locally-served HTML (`page.setContent(...)`) cover §3.3–§3.9 without network. §3.1–§3.2 can be unit-tested by extracting the regex check into a pure helper, or by stubbing `page.url()` with a mock object that satisfies the narrow surface used here (`url()` + `evaluate()`).
 

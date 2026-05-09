@@ -108,61 +108,77 @@ export async function checkQuestionAnswered(
   if (ids.length === 0) {
     return { answered: false, hits: [], reason: "no inputs to check" };
   }
-  return await session.page.evaluate(
-    (ids) => {
-      const hits: { id: number; type: string; state: string; value?: string }[] = [];
-      let answered = false;
-      for (const id of ids) {
-        const el = document.querySelector(`[data-tickle-id="${id}"]`);
-        if (!el) {
-          hits.push({ id, type: "missing", state: "absent" });
-          continue;
-        }
-        const tag = el.tagName.toLowerCase();
-        const t = (el as HTMLInputElement).type?.toLowerCase?.() ?? "";
-        const role = el.getAttribute("role") ?? "";
-
-        const isCheckable = role === "checkbox" || role === "radio" || role === "switch" || t === "checkbox" || t === "radio";
-        const isText = tag === "textarea" || (tag === "input" && (t === "text" || t === "email" || t === "url" || t === "search" || t === "number" || t === "tel" || !t));
-        const isSelect = tag === "select";
-        const isCE = (el as HTMLElement).isContentEditable;
-
-        if (isCheckable) {
-          const checked =
-            (el as HTMLInputElement).checked === true ||
-            el.getAttribute("aria-checked") === "true" ||
-            el.getAttribute("aria-selected") === "true";
-          hits.push({ id, type: role || t, state: checked ? "checked" : "unchecked" });
-          if (checked) answered = true;
-        } else if (isText) {
-          const v = ((el as HTMLInputElement).value ?? "").trim();
-          hits.push({ id, type: "text", state: v ? "filled" : "empty", value: v.slice(0, 80) });
-          if (v) answered = true;
-        } else if (isSelect) {
-          const sel = el as HTMLSelectElement;
-          const v = sel.value;
-          const opt = sel.options[sel.selectedIndex];
-          const isDefault = sel.selectedIndex <= 0 && (!v || v === "" || (opt && (opt.disabled || /please|choose|select/i.test(opt.text))));
-          hits.push({ id, type: "select", state: isDefault ? "default" : "selected", value: v });
-          if (!isDefault) answered = true;
-        } else if (isCE) {
-          const v = ((el as HTMLElement).innerText ?? "").trim();
-          hits.push({ id, type: "contenteditable", state: v ? "filled" : "empty", value: v.slice(0, 80) });
-          if (v) answered = true;
-        } else {
-          hits.push({ id, type: tag, state: "unknown" });
-        }
+  return await session.page.evaluate((ids) => {
+    const hits: { id: number; type: string; state: string; value?: string }[] = [];
+    let answered = false;
+    for (const id of ids) {
+      const el = document.querySelector(`[data-tickle-id="${id}"]`);
+      if (!el) {
+        hits.push({ id, type: "missing", state: "absent" });
+        continue;
       }
-      return {
-        answered,
-        hits,
-        reason: answered
-          ? "at least one input has an answer"
-          : "no input is checked or filled",
-      };
-    },
-    ids,
-  );
+      const tag = el.tagName.toLowerCase();
+      const t = (el as HTMLInputElement).type?.toLowerCase?.() ?? "";
+      const role = el.getAttribute("role") ?? "";
+
+      const isCheckable =
+        role === "checkbox" ||
+        role === "radio" ||
+        role === "switch" ||
+        t === "checkbox" ||
+        t === "radio";
+      const isText =
+        tag === "textarea" ||
+        (tag === "input" &&
+          (t === "text" ||
+            t === "email" ||
+            t === "url" ||
+            t === "search" ||
+            t === "number" ||
+            t === "tel" ||
+            !t));
+      const isSelect = tag === "select";
+      const isCE = (el as HTMLElement).isContentEditable;
+
+      if (isCheckable) {
+        const checked =
+          (el as HTMLInputElement).checked === true ||
+          el.getAttribute("aria-checked") === "true" ||
+          el.getAttribute("aria-selected") === "true";
+        hits.push({ id, type: role || t, state: checked ? "checked" : "unchecked" });
+        if (checked) answered = true;
+      } else if (isText) {
+        const v = ((el as HTMLInputElement).value ?? "").trim();
+        hits.push({ id, type: "text", state: v ? "filled" : "empty", value: v.slice(0, 80) });
+        if (v) answered = true;
+      } else if (isSelect) {
+        const sel = el as HTMLSelectElement;
+        const v = sel.value;
+        const opt = sel.options[sel.selectedIndex];
+        const isDefault =
+          sel.selectedIndex <= 0 &&
+          (!v || v === "" || (opt && (opt.disabled || /please|choose|select/i.test(opt.text))));
+        hits.push({ id, type: "select", state: isDefault ? "default" : "selected", value: v });
+        if (!isDefault) answered = true;
+      } else if (isCE) {
+        const v = ((el as HTMLElement).innerText ?? "").trim();
+        hits.push({
+          id,
+          type: "contenteditable",
+          state: v ? "filled" : "empty",
+          value: v.slice(0, 80),
+        });
+        if (v) answered = true;
+      } else {
+        hits.push({ id, type: tag, state: "unknown" });
+      }
+    }
+    return {
+      answered,
+      hits,
+      reason: answered ? "at least one input has an answer" : "no input is checked or filled",
+    };
+  }, ids);
 }
 
 export async function scanForm(session: Session): Promise<FormScan> {
@@ -170,7 +186,7 @@ export async function scanForm(session: Session): Promise<FormScan> {
     const isVisible = (el: Element): boolean => {
       const rect = (el as HTMLElement).getBoundingClientRect();
       if (rect.width === 0 || rect.height === 0) return false;
-      const s = window.getComputedStyle(el as HTMLElement);
+      const s = window.getComputedStyle(el);
       if (s.display === "none" || s.visibility === "hidden") return false;
       if (parseFloat(s.opacity || "1") === 0) return false;
       let p: Element | null = el.parentElement;
@@ -195,7 +211,7 @@ export async function scanForm(session: Session): Promise<FormScan> {
       const labelledBy = el.getAttribute("aria-labelledby");
       if (labelledBy) {
         const ref = document.getElementById(labelledBy);
-        if (ref) return ((ref as HTMLElement).innerText || ref.textContent || "").trim();
+        if (ref) return ((ref).innerText || ref.textContent || "").trim();
       }
       return "";
     };
@@ -226,14 +242,14 @@ export async function scanForm(session: Session): Promise<FormScan> {
         }
         p = p.parentElement;
       }
-      return el.parentElement || el;
+      return el.parentElement ?? el;
     };
 
     /** Stable hash for using a DOM element as a Map key (path of indices to root). */
     const elementPath = (el: Element): string => {
       const parts: string[] = [];
       let cur: Element | null = el;
-      while (cur && cur.parentElement && cur !== document.body) {
+      while (cur?.parentElement && cur !== document.body) {
         const idx = Array.from(cur.parentElement.children).indexOf(cur);
         parts.push(`${cur.tagName.toLowerCase()}:${idx}`);
         cur = cur.parentElement;
@@ -280,7 +296,9 @@ export async function scanForm(session: Session): Promise<FormScan> {
       }
       // 4. Last resort: container's own text. Often this is the radio labels
       //    concatenated together — caller should treat this as low-confidence.
-      return ((container as HTMLElement).innerText || container.textContent || "").trim().slice(0, 240);
+      return ((container as HTMLElement).innerText || container.textContent || "")
+        .trim()
+        .slice(0, 240);
     };
 
     const SELECTOR =
@@ -295,7 +313,12 @@ export async function scanForm(session: Session): Promise<FormScan> {
         const tag = p.tagName.toLowerCase();
         if (tag === "nav" || tag === "header" || tag === "aside" || tag === "footer") return true;
         const role = p.getAttribute("role");
-        if (role === "navigation" || role === "banner" || role === "complementary" || role === "contentinfo") {
+        if (
+          role === "navigation" ||
+          role === "banner" ||
+          role === "complementary" ||
+          role === "contentinfo"
+        ) {
           return true;
         }
         // Inputs nested inside an anchor are navigation hazards — clicking
@@ -323,7 +346,7 @@ export async function scanForm(session: Session): Promise<FormScan> {
     /** Prefer to scope the scan to the dominant form container — falls back to
      *  document if no <form> is found. */
     const pickRoot = (): ParentNode => {
-      const forms = Array.from(document.querySelectorAll("form")) as HTMLFormElement[];
+      const forms = Array.from(document.querySelectorAll("form"));
       if (forms.length === 0) return document;
       // Pick the form with the most form-input descendants.
       let best: HTMLFormElement | null = null;
@@ -339,7 +362,7 @@ export async function scanForm(session: Session): Promise<FormScan> {
     };
 
     const root = pickRoot();
-    const allMatched = Array.from((root as ParentNode).querySelectorAll(SELECTOR))
+    const allMatched = Array.from((root).querySelectorAll(SELECTOR))
       .filter(isVisible)
       .filter((el) => !isInsideNonFormRegion(el));
 
@@ -374,7 +397,17 @@ export async function scanForm(session: Session): Promise<FormScan> {
       else if (explicitRole === "radio" || t === "radio") kind = "radio";
       else if (explicitRole === "switch") kind = "checkbox";
       else if (explicitRole === "combobox") kind = "select";
-      else if (tag === "input" && (t === "text" || t === "email" || t === "url" || t === "search" || !t || t === "number" || t === "tel" || t === "password")) {
+      else if (
+        tag === "input" &&
+        (t === "text" ||
+          t === "email" ||
+          t === "url" ||
+          t === "search" ||
+          !t ||
+          t === "number" ||
+          t === "tel" ||
+          t === "password")
+      ) {
         kind = "text";
       } else if (tag === "input" && (t === "submit" || t === "button" || t === "reset")) {
         kind = "button";
@@ -385,7 +418,7 @@ export async function scanForm(session: Session): Promise<FormScan> {
       el.setAttribute("data-tickle-id", String(nextId));
 
       const optionLabel = labelFor(el);
-      const name = el.getAttribute("name") || "";
+      const name = el.getAttribute("name") ?? "";
       const value = (el as HTMLInputElement).value;
       const checked = (el as HTMLInputElement).checked === true;
 
@@ -414,7 +447,8 @@ export async function scanForm(session: Session): Promise<FormScan> {
           group: name || undefined,
           value: value || undefined,
           checked: kind === "radio" || kind === "checkbox" ? checked : undefined,
-          current_value: kind === "text" || kind === "textarea" || kind === "select" ? value : undefined,
+          current_value:
+            kind === "text" || kind === "textarea" || kind === "select" ? value : undefined,
         },
       });
 
@@ -436,9 +470,7 @@ export async function scanForm(session: Session): Promise<FormScan> {
       const questionText = questionTextFor(container);
       const types = new Set(arr.map((a) => a.input.type));
       const kind: FormQuestion["kind"] =
-        types.size === 1
-          ? (Array.from(types)[0] as FormQuestion["kind"])
-          : "mixed";
+        types.size === 1 ? (Array.from(types)[0] as FormQuestion["kind"]) : "mixed";
       questions.push({
         question: questionText.slice(0, 400),
         kind,

@@ -183,7 +183,9 @@ function BlockCard({
       <div className="flex items-center gap-2 border-b border-zinc-800/60 px-3 py-1.5">
         <span className="font-mono text-[10px] text-zinc-500">{index + 1}</span>
         <span className="text-base">{meta.icon}</span>
-        <span className={`text-xs font-semibold uppercase tracking-wide ${label}`}>{meta.label}</span>
+        <span className={`text-xs font-semibold uppercase tracking-wide ${label}`}>
+          {meta.label}
+        </span>
         {status && <StatusBadge status={status} running={isRunning} />}
         <div className="ml-auto flex items-center gap-1">
           <label
@@ -193,7 +195,7 @@ function BlockCard({
             <input
               type="checkbox"
               checked={!!block.pauseAfter}
-              onChange={(e) => onChange({ pauseAfter: e.target.checked } as Partial<Block>)}
+              onChange={(e) => onChange({ pauseAfter: e.target.checked })}
               disabled={isLocked}
               className="h-3 w-3 accent-amber-500"
             />
@@ -242,7 +244,7 @@ function BlockBody({
             placeholder="https://example.com"
             value={block.url}
             disabled={disabled}
-            onChange={(e) => onChange({ url: e.target.value } as Partial<Block>)}
+            onChange={(e) => onChange({ url: e.target.value })}
           />
         </Field>
       );
@@ -254,7 +256,7 @@ function BlockBody({
             placeholder="What should the AI accomplish in this step?"
             value={block.description}
             disabled={disabled}
-            onChange={(e) => onChange({ description: e.target.value } as Partial<Block>)}
+            onChange={(e) => onChange({ description: e.target.value })}
           />
         </Field>
       );
@@ -267,7 +269,7 @@ function BlockBody({
             placeholder="Pause and verify the form looks right"
             value={block.message ?? ""}
             disabled={disabled}
-            onChange={(e) => onChange({ message: e.target.value } as Partial<Block>)}
+            onChange={(e) => onChange({ message: e.target.value })}
           />
         </Field>
       );
@@ -281,7 +283,7 @@ function BlockBody({
               placeholder='e.g. "the Submit button" or "the Qualifications tab"'
               value={block.target}
               disabled={disabled}
-              onChange={(e) => onChange({ target: e.target.value } as Partial<Block>)}
+              onChange={(e) => onChange({ target: e.target.value })}
             />
           </Field>
           <Field label="Role filter">
@@ -290,7 +292,7 @@ function BlockBody({
               value={block.role ?? "any"}
               disabled={disabled}
               onChange={(e) =>
-                onChange({ role: e.target.value as (typeof CLICK_ROLES)[number] } as Partial<Block>)
+                onChange({ role: e.target.value as (typeof CLICK_ROLES)[number] })
               }
             >
               {CLICK_ROLES.map((r) => (
@@ -312,7 +314,7 @@ function BlockBody({
               placeholder="e.g. Search box"
               value={block.target}
               disabled={disabled}
-              onChange={(e) => onChange({ target: e.target.value } as Partial<Block>)}
+              onChange={(e) => onChange({ target: e.target.value })}
             />
           </Field>
           <Field label="Value">
@@ -322,7 +324,7 @@ function BlockBody({
               placeholder="text to type (use $var to interpolate)"
               value={block.value}
               disabled={disabled}
-              onChange={(e) => onChange({ value: e.target.value } as Partial<Block>)}
+              onChange={(e) => onChange({ value: e.target.value })}
             />
           </Field>
         </div>
@@ -337,7 +339,7 @@ function BlockBody({
               placeholder="e.g. all visible product titles as a list"
               value={block.target}
               disabled={disabled}
-              onChange={(e) => onChange({ target: e.target.value } as Partial<Block>)}
+              onChange={(e) => onChange({ target: e.target.value })}
             />
           </Field>
           <Field label="Variable name">
@@ -350,7 +352,7 @@ function BlockBody({
               onChange={(e) =>
                 onChange({
                   var_name: e.target.value.replace(/[^a-zA-Z0-9_]/g, ""),
-                } as Partial<Block>)
+                })
               }
             />
           </Field>
@@ -366,7 +368,7 @@ function BlockBody({
               placeholder='e.g. "the form has been fully completed"'
               value={block.condition}
               disabled={disabled}
-              onChange={(e) => onChange({ condition: e.target.value } as Partial<Block>)}
+              onChange={(e) => onChange({ condition: e.target.value })}
             />
           </Field>
           <Field label="On fail">
@@ -375,7 +377,7 @@ function BlockBody({
               value={block.on_fail ?? "halt"}
               disabled={disabled}
               onChange={(e) =>
-                onChange({ on_fail: e.target.value as "halt" | "pause" } as Partial<Block>)
+                onChange({ on_fail: e.target.value as "halt" | "pause" })
               }
             >
               <option value="halt">halt run</option>
@@ -394,7 +396,7 @@ function BlockBody({
               placeholder="e.g. JavaScript fundamentals quiz"
               value={block.context ?? ""}
               disabled={disabled}
-              onChange={(e) => onChange({ context: e.target.value } as Partial<Block>)}
+              onChange={(e) => onChange({ context: e.target.value })}
             />
           </Field>
           <Field label="Unanswered variable">
@@ -407,7 +409,7 @@ function BlockBody({
               onChange={(e) =>
                 onChange({
                   unanswered_var: e.target.value.replace(/[^a-zA-Z0-9_]/g, ""),
-                } as Partial<Block>)
+                })
               }
             />
           </Field>
@@ -424,7 +426,7 @@ function BlockBody({
                 placeholder="$titles"
                 value={block.items}
                 disabled={disabled}
-                onChange={(e) => onChange({ items: e.target.value } as Partial<Block>)}
+                onChange={(e) => onChange({ items: e.target.value })}
               />
             </Field>
             <Field label="Item variable name">
@@ -434,7 +436,7 @@ function BlockBody({
                 placeholder="item"
                 value={block.item_var ?? "item"}
                 disabled={disabled}
-                onChange={(e) => onChange({ item_var: e.target.value } as Partial<Block>)}
+                onChange={(e) => onChange({ item_var: e.target.value })}
               />
             </Field>
           </div>
@@ -442,7 +444,7 @@ function BlockBody({
             <div className="mb-2 text-[10px] uppercase tracking-wider text-zinc-500">Body</div>
             <BlockList
               blocks={block.body}
-              onChange={(body) => onChange({ body } as Partial<Block>)}
+              onChange={(body) => onChange({ body })}
             />
           </div>
         </div>
@@ -459,13 +461,7 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-function StatusBadge({
-  status,
-  running,
-}: {
-  status: BlockStatusMap[string];
-  running: boolean;
-}) {
+function StatusBadge({ status, running }: { status: BlockStatusMap[string]; running: boolean }) {
   if (running) {
     return (
       <span className="rounded-full border border-blue-500/40 bg-blue-500/10 px-1.5 py-0 text-[9px] font-semibold uppercase tracking-wider text-blue-200">

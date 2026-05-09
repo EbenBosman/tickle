@@ -14,12 +14,12 @@ server/src/
 └── interface/       ← Fastify routes, SSE handlers, CLI bootstrap
 ```
 
-| Layer            | May import from                          | What goes here                                                                 |
-|------------------|------------------------------------------|--------------------------------------------------------------------------------|
-| `domain/`        | (nothing)                                | Block types, error classes, the SSE event type union, value objects.           |
-| `application/`   | `domain/`                                | Block executors, run lifecycle, pause/cancel orchestration, snapshot pipeline. |
-| `infrastructure/`| `domain/`, `application/` (interfaces)   | `BrowserContext` adapter, `LLMClient`, `RunStore`, `EventBus`, file logger.    |
-| `interface/`     | all of the above                         | `routes/tasks.ts`, `routes/runs.ts`, SSE wiring, Fastify bootstrap.            |
+| Layer             | May import from                        | What goes here                                                                 |
+| ----------------- | -------------------------------------- | ------------------------------------------------------------------------------ |
+| `domain/`         | (nothing)                              | Block types, error classes, the SSE event type union, value objects.           |
+| `application/`    | `domain/`                              | Block executors, run lifecycle, pause/cancel orchestration, snapshot pipeline. |
+| `infrastructure/` | `domain/`, `application/` (interfaces) | `BrowserContext` adapter, `LLMClient`, `RunStore`, `EventBus`, file logger.    |
+| `interface/`      | all of the above                       | `routes/tasks.ts`, `routes/runs.ts`, SSE wiring, Fastify bootstrap.            |
 
 ### Concrete examples (post-refactor target)
 
@@ -49,12 +49,12 @@ web/src/
 └── features/        ← feature folders combining state + ui (one folder = one screen-shaped chunk)
 ```
 
-| Layer       | May import from                      | What goes here                                                       |
-|-------------|--------------------------------------|----------------------------------------------------------------------|
-| `domain/`   | (nothing)                            | Block, Task, Run, Step types. Mirrors `server/src/domain/` shapes.   |
-| `state/`    | `domain/`                            | `useRunStream`, `useTasks`, derived selectors, store factories.      |
-| `ui/`       | `domain/`                            | `<StatusPill/>`, `<BlockBadge/>`, generic primitives. No fetch calls.|
-| `features/` | all of the above                     | `features/run-view/`, `features/task-editor/`, etc.                  |
+| Layer       | May import from  | What goes here                                                        |
+| ----------- | ---------------- | --------------------------------------------------------------------- |
+| `domain/`   | (nothing)        | Block, Task, Run, Step types. Mirrors `server/src/domain/` shapes.    |
+| `state/`    | `domain/`        | `useRunStream`, `useTasks`, derived selectors, store factories.       |
+| `ui/`       | `domain/`        | `<StatusPill/>`, `<BlockBadge/>`, generic primitives. No fetch calls. |
+| `features/` | all of the above | `features/run-view/`, `features/task-editor/`, etc.                   |
 
 ### Concrete examples (post-refactor target)
 

@@ -166,7 +166,7 @@ describe("substituteVars — replacement", () => {
     expect(substituteVars("$_a $x1 $snake_case_var", vars)).toBe("first second third");
   });
 
-  it("captures current-behaviour: an explicitly-set undefined value substitutes as the literal string \"undefined\"", () => {
+  it('captures current-behaviour: an explicitly-set undefined value substitutes as the literal string "undefined"', () => {
     // ⚠️ Drift per docs/specs/server/blocks.md §6: setting undefined into
     // the Map differs from leaving the key absent. Pinning current
     // behaviour so the fix path is observable.

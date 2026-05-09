@@ -5,7 +5,10 @@ import { api } from "../api.ts";
 export type BlockStatus = "pending" | "running" | "done" | "failed" | "skipped";
 
 type StreamEvent =
-  | { replay: true; step: { idx: number; kind: string; payload: string; screenshot_path: string | null } }
+  | {
+      replay: true;
+      step: { idx: number; kind: string; payload: string; screenshot_path: string | null };
+    }
   | { kind: "thought"; text: string; block_id?: string }
   | { kind: "tool_call"; name: string; args: unknown; block_id?: string }
   | {
@@ -134,19 +137,19 @@ export function RunView({
     const es = new EventSource(`/api/runs/${runId}/stream`);
     let counter = 0;
     es.onmessage = (msg) => {
-      const ev = JSON.parse(msg.data) as StreamEvent;
+      const ev = JSON.parse(msg.data as string) as StreamEvent;
       counter++;
-      if ("replay" in ev && ev.replay) {
+      if ("replay" in ev) {
         const s = ev.step;
-        const payload = JSON.parse(s.payload);
+        const payload = JSON.parse(s.payload) as Record<string, unknown>;
         setEntries((prev) => [
           ...prev,
           {
             id: `r-${s.idx}`,
             kind: s.kind as Entry["kind"],
             body: renderBody(s.kind, payload),
-            ok: s.kind === "tool_result" ? payload.ok : undefined,
-            toolName: payload.name,
+            ok: s.kind === "tool_result" ? Boolean(payload.ok) : undefined,
+            toolName: typeof payload.name === "string" ? payload.name : undefined,
             screenshot: s.screenshot_path ?? undefined,
           },
         ]);
@@ -189,7 +192,7 @@ export function RunView({
         onBlockStatus?.({
           blockId: ev.block_id,
           statusMap: {
-            ...(latestStatusMapRef.current),
+            ...latestStatusMapRef.current,
             [ev.block_id]: "running",
           },
         });
@@ -199,7 +202,9 @@ export function RunView({
         };
         latestRunningRef.current = ev.block_id;
       } else if (ev.kind === "block_end") {
-        const details = ev.details as { unanswered?: { question: string; reason: string }[]; total?: number } | undefined;
+        const details = ev.details as
+          | { unanswered?: { question: string; reason: string }[]; total?: number }
+          | undefined;
         const unanswered = Array.isArray(details?.unanswered) ? details.unanswered : undefined;
         setEntries((p) => [
           ...p,
@@ -259,7 +264,9 @@ export function RunView({
           .then(({ run }) => {
             if (run.finished_at) setFinishedAt(run.finished_at);
           })
-          .catch(() => {});
+          .catch(() => {
+            // ignore — terminal-state finalisation is best-effort
+          });
       }
     };
     es.onerror = () => {
@@ -267,6 +274,11 @@ export function RunView({
     };
 
     return () => es.close();
+    // The callbacks (onBlockStatus, onStats) are intentionally omitted —
+    // we only want to (re)open the EventSource when the runId itself
+    // changes. Phase 5 should hoist this whole effect into a
+    // state/useRunStream hook so the dependency story is explicit.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [runId]);
 
   useEffect(() => {
@@ -299,9 +311,7 @@ export function RunView({
           {elapsed && (
             <div
               className={`flex items-center gap-1.5 rounded-md border px-2 py-0.5 ${
-                finishedAt
-                  ? "border-zinc-700 bg-zinc-900"
-                  : "border-blue-500/40 bg-blue-500/10"
+                finishedAt ? "border-zinc-700 bg-zinc-900" : "border-blue-500/40 bg-blue-500/10"
               }`}
               title={finishedAt ? "Total duration" : "Elapsed time"}
             >
@@ -429,8 +439,8 @@ export function RunView({
             Auto-paused
           </div>
           <div className="mt-1">
-            {pauseInfo.reason ?? "Login required."} The browser is yours — finish the login,
-            then click <span className="font-semibold">Resume</span>.
+            {pauseInfo.reason ?? "Login required."} The browser is yours — finish the login, then
+            click <span className="font-semibold">Resume</span>.
           </div>
         </div>
       )}
@@ -526,10 +536,14 @@ function EntryCard({ entry }: { entry: Entry }) {
     );
   }
   if (entry.kind === "tool_result") {
-    const okCls = entry.ok ? "border-emerald-500/30 bg-emerald-500/5" : "border-red-500/30 bg-red-500/5";
+    const okCls = entry.ok
+      ? "border-emerald-500/30 bg-emerald-500/5"
+      : "border-red-500/30 bg-red-500/5";
     return (
       <div className={`${base} ${okCls}`}>
-        <Label>← {entry.toolName} {entry.ok ? "" : "(error)"}</Label>
+        <Label>
+          ← {entry.toolName} {entry.ok ? "" : "(error)"}
+        </Label>
         {entry.screenshot && (
           <img
             src={`/screenshots/${entry.screenshot}`}
@@ -569,7 +583,9 @@ function Label({ children }: { children: ReactNode }) {
  */
 function parseSqliteUtc(s: string | null): number | null {
   if (!s) return null;
-  const ms = Date.parse(s.includes("T") ? (s.endsWith("Z") ? s : s + "Z") : s.replace(" ", "T") + "Z");
+  const ms = Date.parse(
+    s.includes("T") ? (s.endsWith("Z") ? s : s + "Z") : s.replace(" ", "T") + "Z",
+  );
   return Number.isFinite(ms) ? ms : null;
 }
 
@@ -584,7 +600,11 @@ function formatDuration(ms: number): string {
   return `${s}s`;
 }
 
-function computeElapsed(startedAt: string | null, finishedAt: string | null, now: number): string | null {
+function computeElapsed(
+  startedAt: string | null,
+  finishedAt: string | null,
+  now: number,
+): string | null {
   const start = parseSqliteUtc(startedAt);
   if (start === null) return null;
   const end = parseSqliteUtc(finishedAt) ?? now;
@@ -592,10 +612,11 @@ function computeElapsed(startedAt: string | null, finishedAt: string | null, now
 }
 
 function renderBody(kind: string, payload: Record<string, unknown>): string {
-  if (kind === "thought") return String(payload.text ?? "");
+  const asStr = (v: unknown) => (typeof v === "string" ? v : "");
+  if (kind === "thought") return asStr(payload.text);
   if (kind === "tool_call") return JSON.stringify(payload.args ?? {}, null, 2);
-  if (kind === "tool_result") return String(payload.text ?? "");
-  if (kind === "error") return String(payload.error ?? "");
-  if (kind === "final") return String(payload.answer ?? "");
+  if (kind === "tool_result") return asStr(payload.text);
+  if (kind === "error") return asStr(payload.error);
+  if (kind === "final") return asStr(payload.answer);
   return JSON.stringify(payload);
 }

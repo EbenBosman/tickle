@@ -4,7 +4,7 @@
 
 ## 1. Why
 
-Three tiny modules collected into one spec because each is too small to justify its own file but each carries a contract worth pinning down. `TaskList` is the left-column tasks pane: a stateless renderer that takes a list, a selection, and three callbacks. `StatusPill` is the canonical visual mapping from `RunStatus` (and the synthesised `"paused"` value) to colour and label — it is the *only* place in the UI that decides what each run state looks like, so it must enumerate every status the server can emit. `main.tsx` is the React bootstrap; included here because it is ten lines and there is no other reasonable home.
+Three tiny modules collected into one spec because each is too small to justify its own file but each carries a contract worth pinning down. `TaskList` is the left-column tasks pane: a stateless renderer that takes a list, a selection, and three callbacks. `StatusPill` is the canonical visual mapping from `RunStatus` (and the synthesised `"paused"` value) to colour and label — it is the _only_ place in the UI that decides what each run state looks like, so it must enumerate every status the server can emit. `main.tsx` is the React bootstrap; included here because it is ten lines and there is no other reasonable home.
 
 > **Non-obvious why — `StatusPill` is the canonical status enum mirror.** The server's `RunStatus` is `running | done | error | cancelled` (see `web/src/api.ts` line 14), but `StatusPill` accepts an additional `"paused"` value synthesised by `RunView` from the orthogonal `is_paused` flag (a paused run still has `status === "running"` server-side; the UI maps `paused && status === "running"` → `"paused"` before handing the string to the pill — see `RunView.tsx` line 384). Any new server-side status that is not listed in §2's mapping table falls through to the grey fallback — that is the drift signal.
 >
@@ -16,34 +16,34 @@ Three tiny modules collected into one spec because each is too small to justify 
 
 ### 2a. `TaskList`
 
-| Prop         | Type                          | Behaviour                                                                                  |
-|--------------|-------------------------------|--------------------------------------------------------------------------------------------|
-| `tasks`      | `Task[]`                      | Rendered top-to-bottom in array order. Empty array → "No tasks yet" placeholder.            |
-| `selectedId` | `number \| null`              | The matching row gets highlighted (`bg-zinc-800`). `null` → no row highlighted.             |
-| `onSelect`   | `(id: number) => void`        | Fires on row body click. Not fired by the delete affordance.                                |
-| `onCreate`   | `() => void`                  | Fires on the green "+ New task" button.                                                     |
-| `onDelete`   | `(id: number) => void`        | Fires only after `window.confirm("Delete \"<name>\"?")` returns true.                       |
+| Prop         | Type                   | Behaviour                                                                        |
+| ------------ | ---------------------- | -------------------------------------------------------------------------------- |
+| `tasks`      | `Task[]`               | Rendered top-to-bottom in array order. Empty array → "No tasks yet" placeholder. |
+| `selectedId` | `number \| null`       | The matching row gets highlighted (`bg-zinc-800`). `null` → no row highlighted.  |
+| `onSelect`   | `(id: number) => void` | Fires on row body click. Not fired by the delete affordance.                     |
+| `onCreate`   | `() => void`           | Fires on the green "+ New task" button.                                          |
+| `onDelete`   | `(id: number) => void` | Fires only after `window.confirm("Delete \"<name>\"?")` returns true.            |
 
 Behaviour: pure render of `tasks`, no internal state, no fetch. Empty-name rows display `"(untitled)"`. The delete `✕` button is `hidden group-hover:inline` — invisible until the row is hovered.
 
 ### 2b. `StatusPill`
 
-| Prop     | Type     | Behaviour                                                                          |
-|----------|----------|------------------------------------------------------------------------------------|
+| Prop     | Type     | Behaviour                                                                                                                  |
+| -------- | -------- | -------------------------------------------------------------------------------------------------------------------------- |
 | `status` | `string` | Mapped to colour classes per the table below. The label is the raw string, uppercased via CSS (`uppercase tracking-wide`). |
 
 ⚠️ Drift — `status: string` is too loose. Should be `RunStatus | "paused"` (i.e. `"running" | "done" | "error" | "cancelled" | "paused"`). Today an unknown status silently renders grey, hiding server/UI drift.
 
 #### Status → colour mapping (canonical)
 
-| `status`      | Tailwind classes                                         | Origin                                                            |
-|---------------|----------------------------------------------------------|-------------------------------------------------------------------|
-| `"running"`   | `bg-blue-500/10 text-blue-300 border-blue-500/30`        | Server `RunStatus`.                                               |
-| `"paused"`    | `bg-amber-500/10 text-amber-300 border-amber-500/30`     | Synthesised by `RunView` from `is_paused && status === "running"`. Not a server `RunStatus`. |
-| `"done"`      | `bg-emerald-500/10 text-emerald-300 border-emerald-500/30` | Server `RunStatus`.                                             |
-| `"error"`     | `bg-red-500/10 text-red-300 border-red-500/30`           | Server `RunStatus`.                                               |
-| `"cancelled"` | `bg-amber-500/10 text-amber-300 border-amber-500/30`     | Server `RunStatus`. Shares amber with `"paused"`.                 |
-| *anything else* | `bg-zinc-500/10 text-zinc-300 border-zinc-500/30` (grey fallback) | **Drift signal** — server emitted a status the UI does not handle. |
+| `status`        | Tailwind classes                                                  | Origin                                                                                       |
+| --------------- | ----------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `"running"`     | `bg-blue-500/10 text-blue-300 border-blue-500/30`                 | Server `RunStatus`.                                                                          |
+| `"paused"`      | `bg-amber-500/10 text-amber-300 border-amber-500/30`              | Synthesised by `RunView` from `is_paused && status === "running"`. Not a server `RunStatus`. |
+| `"done"`        | `bg-emerald-500/10 text-emerald-300 border-emerald-500/30`        | Server `RunStatus`.                                                                          |
+| `"error"`       | `bg-red-500/10 text-red-300 border-red-500/30`                    | Server `RunStatus`.                                                                          |
+| `"cancelled"`   | `bg-amber-500/10 text-amber-300 border-amber-500/30`              | Server `RunStatus`. Shares amber with `"paused"`.                                            |
+| _anything else_ | `bg-zinc-500/10 text-zinc-300 border-zinc-500/30` (grey fallback) | **Drift signal** — server emitted a status the UI does not handle.                           |
 
 ### 2c. `main.tsx`
 
@@ -68,18 +68,18 @@ The interesting design decision is centralising status-colour logic in `StatusPi
 
 ## 5. How tested
 
-| Spec section / claim                                                                   | Test file | Test name | Status     |
-|----------------------------------------------------------------------------------------|-----------|-----------|------------|
-| §2a — `TaskList` empty array shows "No tasks yet"                                       | —         | —         | TODO(test) |
-| §3 I1/I2 — `TaskList` is stateless and does no I/O (lint or import-graph check)        | —         | —         | TODO(test) |
-| §3 I3 — `TaskList` delete only fires `onDelete` when `window.confirm` returns true     | —         | —         | TODO(test) |
-| §3 I4 — `TaskList` renders rows in array order                                         | —         | —         | TODO(test) |
-| §2a — `selectedId` highlights matching row, `null` highlights none                     | —         | —         | TODO(test) |
-| §3 I5 — `StatusPill` non-fallback branch for each of `running/paused/done/error/cancelled` | —     | —         | TODO(test) — table-driven |
-| §2b — `StatusPill` unknown status renders grey fallback (drift signal)                 | —         | —         | TODO(test) |
-| §3 I6 — no other file hard-codes run-state colours (grep-based architecture test)      | —         | —         | TODO(test) |
-| §3 I7 — `StatusPill` is referentially pure                                             | —         | —         | TODO(test) — render-twice equality |
-| §3 I8 — `main.tsx` mounts `<App />` into `#root` under `StrictMode`                    | —         | —         | TODO(test) — smoke render |
+| Spec section / claim                                                                       | Test file | Test name | Status                             |
+| ------------------------------------------------------------------------------------------ | --------- | --------- | ---------------------------------- |
+| §2a — `TaskList` empty array shows "No tasks yet"                                          | —         | —         | TODO(test)                         |
+| §3 I1/I2 — `TaskList` is stateless and does no I/O (lint or import-graph check)            | —         | —         | TODO(test)                         |
+| §3 I3 — `TaskList` delete only fires `onDelete` when `window.confirm` returns true         | —         | —         | TODO(test)                         |
+| §3 I4 — `TaskList` renders rows in array order                                             | —         | —         | TODO(test)                         |
+| §2a — `selectedId` highlights matching row, `null` highlights none                         | —         | —         | TODO(test)                         |
+| §3 I5 — `StatusPill` non-fallback branch for each of `running/paused/done/error/cancelled` | —         | —         | TODO(test) — table-driven          |
+| §2b — `StatusPill` unknown status renders grey fallback (drift signal)                     | —         | —         | TODO(test)                         |
+| §3 I6 — no other file hard-codes run-state colours (grep-based architecture test)          | —         | —         | TODO(test)                         |
+| §3 I7 — `StatusPill` is referentially pure                                                 | —         | —         | TODO(test) — render-twice equality |
+| §3 I8 — `main.tsx` mounts `<App />` into `#root` under `StrictMode`                        | —         | —         | TODO(test) — smoke render          |
 
 ### Deliberately not tested
 

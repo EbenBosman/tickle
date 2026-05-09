@@ -17,7 +17,7 @@ You are making a change to **$ARGUMENTS**. Follow the cycle strictly.
 ### 🔴 Red — write a failing test
 
 - Add the test under `<module-dir>/__tests__/<module>.test.ts` (or `.spec.ts`).
-- The test must fail for the *right reason*: assertion failure, not import error or missing fixture. Run it (`npm run test -- <pattern>`) and confirm.
+- The test must fail for the _right reason_: assertion failure, not import error or missing fixture. Run it (`npm run test -- <pattern>`) and confirm.
 - Keep the test small and behavioural. One assertion concept per test. Use `describe`/`it` to name the contract claim from the spec.
 
 ### 🟢 Green — minimum code to pass

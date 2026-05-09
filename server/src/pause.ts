@@ -49,14 +49,14 @@ export function isPaused(runId: number): boolean {
 
 export function getPauseInfo(runId: number): { reason?: string; auto?: boolean } | null {
   const e = entries.get(runId);
-  if (!e || !e.paused) return null;
+  if (!e?.paused) return null;
   return { reason: e.reason, auto: e.auto };
 }
 
 /** Resolve immediately if not paused; otherwise wait until resume() / clear() is called. */
 export function awaitIfPaused(runId: number): Promise<void> {
   const e = entries.get(runId);
-  if (!e || !e.paused) return Promise.resolve();
+  if (!e?.paused) return Promise.resolve();
   return new Promise<void>((resolve) => {
     e.waiters.push(resolve);
   });

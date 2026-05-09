@@ -14,15 +14,15 @@ The Claude Rescue feature needs three user-flippable toggles (on/off, model, on-
 
 ### Exports
 
-| Symbol         | Kind      | Signature / shape                            | Stability |
-|----------------|-----------|----------------------------------------------|-----------|
-| `SettingsPage` | component | `({ onClose: () => void }) => JSX.Element`  | stable    |
+| Symbol         | Kind      | Signature / shape                          | Stability |
+| -------------- | --------- | ------------------------------------------ | --------- |
+| `SettingsPage` | component | `({ onClose: () => void }) => JSX.Element` | stable    |
 
 ### Props
 
-| Prop      | Type           | Required | Purpose                                                  |
-|-----------|----------------|----------|----------------------------------------------------------|
-| `onClose` | `() => void`   | yes      | Invoked by the ✕ button. Parent owns drawer visibility. |
+| Prop      | Type         | Required | Purpose                                                 |
+| --------- | ------------ | -------- | ------------------------------------------------------- |
+| `onClose` | `() => void` | yes      | Invoked by the ✕ button. Parent owns drawer visibility. |
 
 ### Sections rendered
 
@@ -32,23 +32,23 @@ The Claude Rescue feature needs three user-flippable toggles (on/off, model, on-
 
 ### Server endpoints consumed (via `api.ts`)
 
-| Endpoint                          | When                              | Notes                                                       |
-|-----------------------------------|-----------------------------------|-------------------------------------------------------------|
-| `GET /api/settings`               | mount (in `load()`)               | Populates local state.                                      |
-| `PUT /api/settings`               | Save click                        | Sends all three fields; result replaces local state.       |
-| `GET /api/lessons?offset=0&limit=20` | mount + after delete           | First page only; no UI to load further.                     |
-| `DELETE /api/lessons/:id`         | row ✕ click                       | Followed by full reload.                                    |
-| `GET /api/export?status=rescued` / `GET /api/export` | export buttons | Blob download with timestamped filename.            |
+| Endpoint                                             | When                 | Notes                                                |
+| ---------------------------------------------------- | -------------------- | ---------------------------------------------------- |
+| `GET /api/settings`                                  | mount (in `load()`)  | Populates local state.                               |
+| `PUT /api/settings`                                  | Save click           | Sends all three fields; result replaces local state. |
+| `GET /api/lessons?offset=0&limit=20`                 | mount + after delete | First page only; no UI to load further.              |
+| `DELETE /api/lessons/:id`                            | row ✕ click          | Followed by full reload.                             |
+| `GET /api/export?status=rescued` / `GET /api/export` | export buttons       | Blob download with timestamped filename.             |
 
 ### Settings field display
 
-| Field                | UI control                         | Disabled when                                                  | Notes                                          |
-|----------------------|------------------------------------|----------------------------------------------------------------|------------------------------------------------|
-| `api_key_configured` | Read-only status row (✓/✗)         | always read-only                                               | Boolean from server; key itself never displayed. |
-| `rescue_enabled`     | Toggle                             | `!api_key_configured`                                          | String-encoded server-side (see `http-settings.md` I1). |
-| `rescue_on_cancel`   | Toggle                             | `!api_key_configured \|\| !rescue_enabled` (local state)        | Cascading disable.                             |
-| `rescue_model`       | Radio group (3 options)            | `!api_key_configured`                                          | Local `MODELS` allowlist — see drift §6.       |
-| `lesson_count`       | (received but ignored)             | —                                                              | UI shows `totalLessons` from `listLessons`, not this field. |
+| Field                | UI control                 | Disabled when                                            | Notes                                                       |
+| -------------------- | -------------------------- | -------------------------------------------------------- | ----------------------------------------------------------- |
+| `api_key_configured` | Read-only status row (✓/✗) | always read-only                                         | Boolean from server; key itself never displayed.            |
+| `rescue_enabled`     | Toggle                     | `!api_key_configured`                                    | String-encoded server-side (see `http-settings.md` I1).     |
+| `rescue_on_cancel`   | Toggle                     | `!api_key_configured \|\| !rescue_enabled` (local state) | Cascading disable.                                          |
+| `rescue_model`       | Radio group (3 options)    | `!api_key_configured`                                    | Local `MODELS` allowlist — see drift §6.                    |
+| `lesson_count`       | (received but ignored)     | —                                                        | UI shows `totalLessons` from `listLessons`, not this field. |
 
 ## 3. Invariants
 
@@ -71,7 +71,7 @@ The Claude Rescue feature needs three user-flippable toggles (on/off, model, on-
 ## 5. How tested
 
 | Spec section / claim                                 | Test file | Test name | Status     |
-|------------------------------------------------------|-----------|-----------|------------|
+| ---------------------------------------------------- | --------- | --------- | ---------- |
 | §2 props — `onClose` invoked by ✕                    | —         | —         | TODO(test) |
 | §2 Save sends all three fields                       | —         | —         | TODO(test) |
 | §2 lesson delete then reload                         | —         | —         | TODO(test) |
@@ -94,7 +94,7 @@ The Claude Rescue feature needs three user-flippable toggles (on/off, model, on-
 - **⚠️ Drift — `MODELS` allowlist is duplicated.** The `MODELS` array (`SettingsPage.tsx:4`) lists the three Anthropic model IDs and a UI cost estimate; `VALID_MODELS` in `routes/settings.ts:4` lists the same IDs server-side. Adding a model requires editing both. Server-side spec already flags this (`http-settings.md` §6); the client-side copy carries extra metadata (`label`, `cost`) that the server doesn't need, so a shared constant should live in `domain/settings.ts` and be augmented on the client.
 - **⚠️ Drift — `lesson_count` from `GET /api/settings` is unused.** The component renders `totalLessons` from `api.listLessons` instead. Either drop the field from the settings response or use it (and skip the second query on mount).
 - **⚠️ Drift — server may return a `rescue_model` outside the local `MODELS` array.** Per `http-settings.md` I2, the server validates only on PUT, not on GET. If a row is set by direct DB edit to e.g. `"claude-opus-99"`, the radio group renders with no option checked and Save would fail with 400. UI should either fall back to the default or render the unknown value as a disabled fourth row.
-- **⚠️ Drift — no error UI.** `load()` and `save()` `console.error` on failure but render no banner. `save()`'s `setSaving(false)` is in a `finally`, but a failed save still flashes "Saved" via no-op (actually no — `setSaved(true)` is *after* the await, so a throw skips it; correct). Still, the user sees nothing for a network error.
+- **⚠️ Drift — no error UI.** `load()` and `save()` `console.error` on failure but render no banner. `save()`'s `setSaving(false)` is in a `finally`, but a failed save still flashes "Saved" via no-op (actually no — `setSaved(true)` is _after_ the await, so a throw skips it; correct). Still, the user sees nothing for a network error.
 - **⚠️ Drift — sub-components belong in `ui/`.** `SectionHeader`, `Card`, `Row`, `Toggle` are pure presentational and reused by no other file today, but the `_LAYERS.md` target moves them to `web/src/ui/` so other features can adopt them.
 - **⚠️ Drift — lessons UX.** Hard-coded 20-item page, no Load-more, no search, no confirmation on delete. For a corpus that grows monotonically with rescues, this is a known cliff.
 - **❓ Open — should Save be debounced/auto on toggle change?** Current model is explicit Save; matches `http-settings.md`'s "atomic save" framing. If we ever do auto-save, the server's partial-PUT support (I3 there) is already in place.

@@ -14,15 +14,15 @@ tickle drives a real Chromium instance to complete user tasks. The browser must 
 
 ### Exports
 
-| Symbol            | Kind   | Signature / shape                                                  | Stability |
-|-------------------|--------|--------------------------------------------------------------------|-----------|
-| `Session`         | class  | `new Session(runId: number)` with `start()`, `close()`, `screenshot()` and public `page: Page` | stable    |
-| `Session#start`   | method | `() => Promise<void>` — opens a fresh tab in the shared context; sets `page` | stable    |
-| `Session#close`   | method | `() => Promise<void>` — closes the tab only; never the context     | stable    |
-| `Session#screenshot` | method | `() => Promise<{ path: string; base64: string }>` — PNG, viewport-only, written to `screenshots/run-<runId>-<NNN>.png` | stable |
-| `Session#page`    | field  | `Page` — populated after `start()` resolves; undefined before      | stable    |
-| `getContext`      | —      | (intentionally not exported — module-internal singleton accessor)  | —         |
-| `clearStaleProfileLocks` | — | (intentionally not exported)                                     | —         |
+| Symbol                   | Kind   | Signature / shape                                                                                                      | Stability |
+| ------------------------ | ------ | ---------------------------------------------------------------------------------------------------------------------- | --------- |
+| `Session`                | class  | `new Session(runId: number)` with `start()`, `close()`, `screenshot()` and public `page: Page`                         | stable    |
+| `Session#start`          | method | `() => Promise<void>` — opens a fresh tab in the shared context; sets `page`                                           | stable    |
+| `Session#close`          | method | `() => Promise<void>` — closes the tab only; never the context                                                         | stable    |
+| `Session#screenshot`     | method | `() => Promise<{ path: string; base64: string }>` — PNG, viewport-only, written to `screenshots/run-<runId>-<NNN>.png` | stable    |
+| `Session#page`           | field  | `Page` — populated after `start()` resolves; undefined before                                                          | stable    |
+| `getContext`             | —      | (intentionally not exported — module-internal singleton accessor)                                                      | —         |
+| `clearStaleProfileLocks` | —      | (intentionally not exported)                                                                                           | —         |
 
 ### Filesystem surface
 
@@ -31,11 +31,11 @@ tickle drives a real Chromium instance to complete user tasks. The browser must 
 
 ### Errors
 
-| Error                       | When                                       | Caller should…                              |
-|-----------------------------|--------------------------------------------|---------------------------------------------|
-| Playwright launch error     | Chromium binary missing (no `npx playwright install chromium` run) | Surface to user; README documents the install step |
-| Profile lock contention     | Another Chromium has `SingletonLock` etc. open on the same profile dir | First-launch sweep removes stale files; if a *live* Chromium holds them, `rmSync` throws `EBUSY` (swallowed) and the subsequent `launchPersistentContext` surfaces the real error |
-| `page.screenshot` throws    | Page closed mid-capture                    | Block executor catches and converts to `{ status: "failed" }` |
+| Error                    | When                                                                   | Caller should…                                                                                                                                                                    |
+| ------------------------ | ---------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Playwright launch error  | Chromium binary missing (no `npx playwright install chromium` run)     | Surface to user; README documents the install step                                                                                                                                |
+| Profile lock contention  | Another Chromium has `SingletonLock` etc. open on the same profile dir | First-launch sweep removes stale files; if a _live_ Chromium holds them, `rmSync` throws `EBUSY` (swallowed) and the subsequent `launchPersistentContext` surfaces the real error |
+| `page.screenshot` throws | Page closed mid-capture                                                | Block executor catches and converts to `{ status: "failed" }`                                                                                                                     |
 
 ## 3. Invariants
 
@@ -60,15 +60,15 @@ tickle drives a real Chromium instance to complete user tasks. The browser must 
 
 ## 5. How tested
 
-| Spec section / claim             | Test file | Test name | Status |
-|----------------------------------|-----------|-----------|--------|
-| §3 I1 single shared context      | —         | —         | TODO(test) — integration scope |
-| §3 I2 close page, not context    | —         | —         | TODO(test) — integration scope |
-| §3 I3 profile path resolution    | —         | —         | TODO(test) — assertable cross-platform |
-| §3 I6 polyfill installed before nav | —      | —         | TODO(test) — integration scope |
-| §3 I7 screenshot naming convention | —       | —         | TODO(test) — file existence + regex on filename |
-| §3 I9 stale-lock sweep on cold launch | —    | —         | TODO(test) — fs-only, no Playwright needed |
-| §3 I10 auto-relaunch after context close | — | —         | TODO(test) — integration scope |
+| Spec section / claim                     | Test file | Test name | Status                                          |
+| ---------------------------------------- | --------- | --------- | ----------------------------------------------- |
+| §3 I1 single shared context              | —         | —         | TODO(test) — integration scope                  |
+| §3 I2 close page, not context            | —         | —         | TODO(test) — integration scope                  |
+| §3 I3 profile path resolution            | —         | —         | TODO(test) — assertable cross-platform          |
+| §3 I6 polyfill installed before nav      | —         | —         | TODO(test) — integration scope                  |
+| §3 I7 screenshot naming convention       | —         | —         | TODO(test) — file existence + regex on filename |
+| §3 I9 stale-lock sweep on cold launch    | —         | —         | TODO(test) — fs-only, no Playwright needed      |
+| §3 I10 auto-relaunch after context close | —         | —         | TODO(test) — integration scope                  |
 
 ### Deliberately not tested
 
@@ -83,4 +83,4 @@ tickle drives a real Chromium instance to complete user tasks. The browser must 
 - **⚠️ Drift — `viewport: null` in headless mode.** In headless, there is no OS window to track, and Chromium falls back to a default viewport (commonly 800×600). Snapshots taken in headless will reflect that. If headless is ever a primary mode (CI), set an explicit viewport conditionally.
 - **⚠️ Guardrail — anti-pattern from CLAUDE.md.** "Do not add raw bare-chrome launch options that disable the persistent profile." Any future flag (`--incognito`, `--user-data-dir=…` override, `--guest`, custom `userDataDir`) that bypasses `PROFILE_DIR` silently destroys saved login state. New launch args must be reviewed against this contract.
 - **❓ Question — should the screenshot helper move to `tools.ts`?** It is the only consumer today. Keeping it on `Session` couples the browser module to a specific filesystem layout. Post-refactor, `infrastructure/browser/context.ts` exposes the page; `infrastructure/observability/screenshotStore.ts` owns the file naming and persistence.
-- **❓ Question — multi-run = multi-context?** Today one context, one page-per-run, single concurrency. If concurrent runs are ever supported, options are: (a) one context per run (loses shared login state — bad), (b) one context, multiple pages, isolation by `BrowserContext`-ish abstraction (storage state shared, which is the *point*), or (c) per-run incognito sub-contexts that import storage state from the shared profile (loses cookies set during the run). Option (b) is correct but needs care around `wait_for` and tab focus.
+- **❓ Question — multi-run = multi-context?** Today one context, one page-per-run, single concurrency. If concurrent runs are ever supported, options are: (a) one context per run (loses shared login state — bad), (b) one context, multiple pages, isolation by `BrowserContext`-ish abstraction (storage state shared, which is the _point_), or (c) per-run incognito sub-contexts that import storage state from the shared profile (loses cookies set during the run). Option (b) is correct but needs care around `wait_for` and tab focus.

@@ -88,15 +88,50 @@ const KIND_META: Record<
   BlockKind,
   { label: string; icon: string; color: string; description: string }
 > = {
-  navigate: { label: "Navigate", icon: "🌐", color: "indigo", description: "Open a URL in the browser." },
-  goal: { label: "Goal", icon: "🧠", color: "violet", description: "Free-form sub-task the AI figures out." },
+  navigate: {
+    label: "Navigate",
+    icon: "🌐",
+    color: "indigo",
+    description: "Open a URL in the browser.",
+  },
+  goal: {
+    label: "Goal",
+    icon: "🧠",
+    color: "violet",
+    description: "Free-form sub-task the AI figures out.",
+  },
   pause: { label: "Pause", icon: "✋", color: "amber", description: "Stop and wait for the user." },
-  click: { label: "Click", icon: "👆", color: "blue", description: "Click an element by description." },
+  click: {
+    label: "Click",
+    icon: "👆",
+    color: "blue",
+    description: "Click an element by description.",
+  },
   fill: { label: "Fill", icon: "✏️", color: "cyan", description: "Type into a form field." },
-  extract: { label: "Extract", icon: "📥", color: "emerald", description: "Pull data into a variable." },
-  verify: { label: "Verify", icon: "✅", color: "teal", description: "Check a condition; halt or pause on failure." },
-  questionnaire: { label: "Questionnaire", icon: "📋", color: "rose", description: "Answer every form question; verify each; track leftovers." },
-  for_each: { label: "For Each", icon: "🔁", color: "pink", description: "Loop over a list, run nested blocks per item." },
+  extract: {
+    label: "Extract",
+    icon: "📥",
+    color: "emerald",
+    description: "Pull data into a variable.",
+  },
+  verify: {
+    label: "Verify",
+    icon: "✅",
+    color: "teal",
+    description: "Check a condition; halt or pause on failure.",
+  },
+  questionnaire: {
+    label: "Questionnaire",
+    icon: "📋",
+    color: "rose",
+    description: "Answer every form question; verify each; track leftovers.",
+  },
+  for_each: {
+    label: "For Each",
+    icon: "🔁",
+    color: "pink",
+    description: "Loop over a list, run nested blocks per item.",
+  },
 };
 
 export function blockMeta(kind: BlockKind) {
@@ -167,7 +202,7 @@ export function summaryOf(block: Block): string {
     case "goal":
       return block.description.slice(0, 200) || "(empty goal)";
     case "pause":
-      return block.message?.slice(0, 200) || "Pause for human";
+      return block.message?.slice(0, 200) ?? "Pause for human";
     case "click": {
       const role = block.role && block.role !== "any" ? `${block.role}: ` : "";
       return `Click ${role}${block.target || "(no target)"}`;

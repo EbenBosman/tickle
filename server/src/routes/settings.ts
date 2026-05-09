@@ -1,11 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { db, getSetting, setSetting, listLessons } from "../db.ts";
 
-const VALID_MODELS = [
-  "claude-haiku-4-5-20251001",
-  "claude-sonnet-4-6",
-  "claude-opus-4-7",
-];
+const VALID_MODELS = ["claude-haiku-4-5-20251001", "claude-sonnet-4-6", "claude-opus-4-7"];
 
 export async function settingsRoutes(app: FastifyInstance) {
   app.get("/api/settings", async () => {
@@ -53,7 +49,7 @@ export async function settingsRoutes(app: FastifyInstance) {
     return listLessons(Number(offset), Math.min(Number(limit), 200));
   });
 
-  app.delete("/api/lessons/:id", async (req, reply) => {
+  app.delete("/api/lessons/:id", async (req, _reply) => {
     const { id } = req.params as { id: string };
     db.prepare("DELETE FROM lessons WHERE id = ?").run(Number(id));
     db.prepare("DELETE FROM lessons_fts WHERE rowid = ?").run(Number(id));

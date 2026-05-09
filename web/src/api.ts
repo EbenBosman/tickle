@@ -31,7 +31,7 @@ export type Step = {
 
 async function j<T>(res: Response): Promise<T> {
   if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
-  return res.json();
+  return (await res.json()) as T;
 }
 
 export type Settings = {
@@ -60,10 +60,7 @@ export const api = {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ name, instruction }),
     }).then((r) => j<Task>(r)),
-  updateTask: (
-    id: number,
-    patch: { name?: string; instruction?: string; steps?: Block[] },
-  ) =>
+  updateTask: (id: number, patch: { name?: string; instruction?: string; steps?: Block[] }) =>
     fetch(`/api/tasks/${id}`, {
       method: "PUT",
       headers: { "content-type": "application/json" },
@@ -71,9 +68,7 @@ export const api = {
     }).then((r) => j<Task>(r)),
   deleteTask: (id: number) => fetch(`/api/tasks/${id}`, { method: "DELETE" }).then((r) => j(r)),
   startRun: (taskId: number) =>
-    fetch(`/api/tasks/${taskId}/run`, { method: "POST" }).then((r) =>
-      j<{ run_id: number }>(r),
-    ),
+    fetch(`/api/tasks/${taskId}/run`, { method: "POST" }).then((r) => j<{ run_id: number }>(r)),
   cancelRun: (runId: number) =>
     fetch(`/api/runs/${runId}/cancel`, { method: "POST" }).then((r) => j<{ ok: boolean }>(r)),
   pauseRun: (runId: number) =>
@@ -90,7 +85,10 @@ export const api = {
     return fetch(url, { method: "DELETE" }).then(async (r) => {
       if (r.status === 409) {
         const body = (await r.json().catch(() => ({}))) as { error?: string; active?: number };
-        throw Object.assign(new Error(body.error ?? "runs still active"), { status: 409, active: body.active });
+        throw Object.assign(new Error(body.error ?? "runs still active"), {
+          status: 409,
+          active: body.active,
+        });
       }
       if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
       return r.json() as Promise<{ ok: boolean; deleted: number; forced: number }>;
@@ -104,8 +102,8 @@ export const api = {
     }).then((r) => j<{ blocks: import("./blocks.ts").Block[] }>(r)),
   listRuns: (taskId: number) => fetch(`/api/tasks/${taskId}/runs`).then((r) => j<Run[]>(r)),
   getRun: (runId: number) =>
-    fetch(`/api/runs/${runId}`).then(
-      (r) => j<{ run: Run; steps: Step[]; pause_info: { reason?: string; auto?: boolean } | null }>(r),
+    fetch(`/api/runs/${runId}`).then((r) =>
+      j<{ run: Run; steps: Step[]; pause_info: { reason?: string; auto?: boolean } | null }>(r),
     ),
 
   getSettings: () => fetch("/api/settings").then((r) => j<Settings>(r)),
@@ -121,8 +119,8 @@ export const api = {
     }).then((r) => j<Settings>(r)),
 
   listLessons: (offset = 0, limit = 50) =>
-    fetch(`/api/lessons?offset=${offset}&limit=${limit}`).then(
-      (r) => j<{ lessons: Lesson[]; total: number }>(r),
+    fetch(`/api/lessons?offset=${offset}&limit=${limit}`).then((r) =>
+      j<{ lessons: Lesson[]; total: number }>(r),
     ),
   deleteLesson: (id: number) =>
     fetch(`/api/lessons/${id}`, { method: "DELETE" }).then((r) => j<{ ok: boolean }>(r)),

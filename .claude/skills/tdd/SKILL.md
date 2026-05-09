@@ -32,6 +32,7 @@ The cycle is **red → green → refactor**. Each cycle = one commit. If you fin
 ## Reporting back
 
 When a cycle finishes, summarise:
+
 - Spec claim enforced
 - Test names added
 - Files changed

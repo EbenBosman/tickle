@@ -43,7 +43,9 @@ function Row({
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
           <div className="font-medium text-zinc-200">{title}</div>
-          {description && <div className="mt-1 text-xs leading-relaxed text-zinc-500">{description}</div>}
+          {description && (
+            <div className="mt-1 text-xs leading-relaxed text-zinc-500">{description}</div>
+          )}
         </div>
         {control && <div className="flex-shrink-0">{control}</div>}
       </div>
@@ -135,9 +137,7 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
 
   if (!settings) {
     return (
-      <div className="flex h-full items-center justify-center text-xs text-zinc-500">
-        Loading…
-      </div>
+      <div className="flex h-full items-center justify-center text-xs text-zinc-500">Loading…</div>
     );
   }
 
@@ -210,9 +210,7 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
                 <label
                   key={m.value}
                   className={`flex items-center gap-3 rounded px-2 py-1.5 transition-colors ${
-                    disabled
-                      ? "cursor-not-allowed opacity-40"
-                      : "cursor-pointer hover:bg-zinc-800"
+                    disabled ? "cursor-not-allowed opacity-40" : "cursor-pointer hover:bg-zinc-800"
                   }`}
                 >
                   <input
@@ -221,9 +219,7 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
                     value={m.value}
                     checked={settings.rescue_model === m.value}
                     disabled={disabled}
-                    onChange={() =>
-                      setSettings((s) => s && { ...s, rescue_model: m.value })
-                    }
+                    onChange={() => setSettings((s) => s && { ...s, rescue_model: m.value })}
                     className="accent-emerald-500"
                   />
                   <span className="flex-1 font-medium text-zinc-200">{m.label}</span>
@@ -291,8 +287,8 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
       <section>
         <SectionHeader title="Training Data Export" />
         <p className="mb-3 text-xs leading-relaxed text-zinc-500">
-          JSONL with chosen/rejected pairs per rescue. Load into axolotl, LLaMA-Factory, or
-          unsloth for DPO fine-tuning.
+          JSONL with chosen/rejected pairs per rescue. Load into axolotl, LLaMA-Factory, or unsloth
+          for DPO fine-tuning.
         </p>
         <div className="flex gap-2">
           <button

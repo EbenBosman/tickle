@@ -55,12 +55,8 @@ export async function runsRoutes(app: FastifyInstance) {
       type RunOutcome = Awaited<ReturnType<typeof runAgent>>;
       let outcome: RunOutcome;
       try {
-        outcome = await runAgent(
-          runId,
-          task.id,
-          task.instruction,
-          task.steps ?? null,
-          (ev) => publish(runId, ev),
+        outcome = await runAgent(runId, task.id, task.instruction, task.steps ?? null, (ev) =>
+          publish(runId, ev),
         );
       } catch (e) {
         const error = errorMessageFromThrow(e);
@@ -69,19 +65,30 @@ export async function runsRoutes(app: FastifyInstance) {
       }
       const finishedAt = new Date().toISOString();
       if (outcome.status === "done") {
-        db.prepare(
-          "UPDATE runs SET status='done', result=?, finished_at=? WHERE id=?",
-        ).run(outcome.result ?? "", finishedAt, runId);
+        db.prepare("UPDATE runs SET status='done', result=?, finished_at=? WHERE id=?").run(
+          outcome.result ?? "",
+          finishedAt,
+          runId,
+        );
       } else if (outcome.status === "cancelled") {
-        db.prepare(
-          "UPDATE runs SET status='cancelled', error=?, finished_at=? WHERE id=?",
-        ).run(outcome.error ?? "Cancelled by user", finishedAt, runId);
+        db.prepare("UPDATE runs SET status='cancelled', error=?, finished_at=? WHERE id=?").run(
+          outcome.error ?? "Cancelled by user",
+          finishedAt,
+          runId,
+        );
       } else {
-        db.prepare(
-          "UPDATE runs SET status='error', error=?, finished_at=? WHERE id=?",
-        ).run(outcome.error ?? "", finishedAt, runId);
+        db.prepare("UPDATE runs SET status='error', error=?, finished_at=? WHERE id=?").run(
+          outcome.error ?? "",
+          finishedAt,
+          runId,
+        );
       }
-      publish(runId, { kind: "end", status: outcome.status, result: outcome.result, error: outcome.error });
+      publish(runId, {
+        kind: "end",
+        status: outcome.status,
+        result: outcome.result,
+        error: outcome.error,
+      });
       // Give late subscribers a moment, then drop the topic.
       setTimeout(() => endTopic(runId), 5000);
     })().catch((e) => {
@@ -115,9 +122,11 @@ export async function runsRoutes(app: FastifyInstance) {
     }
 
     const finishedAt = new Date().toISOString();
-    db.prepare(
-      "UPDATE runs SET status='cancelled', error=?, finished_at=? WHERE id=?",
-    ).run("Force-stopped by user (no live handler — likely server restarted mid-run)", finishedAt, runId);
+    db.prepare("UPDATE runs SET status='cancelled', error=?, finished_at=? WHERE id=?").run(
+      "Force-stopped by user (no live handler — likely server restarted mid-run)",
+      finishedAt,
+      runId,
+    );
     // Notify any SSE listeners that may have reconnected after the crash.
     publish(runId, {
       kind: "end",
@@ -152,9 +161,7 @@ export async function runsRoutes(app: FastifyInstance) {
     const run = db.prepare("SELECT * FROM runs WHERE id = ?").get(runId) as Run | undefined;
     if (!run) return reply.code(404).send({ error: "run not found" });
     if (run.status === "running") {
-      return reply
-        .code(409)
-        .send({ error: "run is still active — cancel it first, then delete" });
+      return reply.code(409).send({ error: "run is still active — cancel it first, then delete" });
     }
     const screenshots = deleteRunArtifacts(runId);
     return { ok: true, screenshots_removed: screenshots };
@@ -191,9 +198,11 @@ export async function runsRoutes(app: FastifyInstance) {
       } catch {
         // ignore
       }
-      db.prepare(
-        "UPDATE runs SET status='cancelled', error=?, finished_at=? WHERE id=?",
-      ).run("Force-cleared by user", finishedAt, r.id);
+      db.prepare("UPDATE runs SET status='cancelled', error=?, finished_at=? WHERE id=?").run(
+        "Force-cleared by user",
+        finishedAt,
+        r.id,
+      );
     }
 
     let totalShots = 0;

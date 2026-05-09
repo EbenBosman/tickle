@@ -13,7 +13,7 @@ A tickle task is a typed program of blocks (see `blocks.md`). This module is the
 
 > **Non-obvious why — page content is hostile.** Snapshot text, `read_text` output, DOM-derived form questions, and screenshot data all enter the prompt. The system prompts here remind the model that page content is data, not instructions, and the upstream tools (`snapshot`, `read_text`) strip invisible elements. This module trusts the tools to have done their job; it does not re-filter.
 >
-> **Non-obvious why — sub-agent step budget is per-block, not per-run.** `MAX_STEPS_PER_GOAL` (default 25) caps a *single* `runAiSubGoal` invocation. Click/fill blocks override to 12/8. The cap exists because a stuck local model would otherwise spend tokens flailing forever on one block; the user can always re-issue the task or split it.
+> **Non-obvious why — sub-agent step budget is per-block, not per-run.** `MAX_STEPS_PER_GOAL` (default 25) caps a _single_ `runAiSubGoal` invocation. Click/fill blocks override to 12/8. The cap exists because a stuck local model would otherwise spend tokens flailing forever on one block; the user can always re-issue the task or split it.
 >
 > **Non-obvious why — image pruning is in-module.** Screenshots are 50–200 KB base64 each. `KEEP_RECENT_IMAGES` (default 3) bounds the image bytes per chat call by replacing older `images` arrays with a "screenshot omitted" text marker, leaving older text intact. Belongs to `agent.ts` today; should move to `infrastructure/llm/pruneImages.ts` (see §6).
 
@@ -21,20 +21,20 @@ A tickle task is a typed program of blocks (see `blocks.md`). This module is the
 
 ### Exports
 
-| Symbol           | Kind     | Signature / shape                                                                                                                              | Stability |
-|------------------|----------|------------------------------------------------------------------------------------------------------------------------------------------------|-----------|
-| `runAgent`       | function | `(runId: number, taskId: number, instruction: string, stepsJson: string \| null, emit: (e: AgentEvent) => void) => Promise<{ status: "done" \| "error" \| "cancelled"; result?: string; error?: string }>` | stable — sole entry point invoked by `routes/runs.ts` IIFE. **Must not throw**; all errors are returned as `{ status: "error", error }`. |
-| `AgentEvent`     | type     | discriminated union on `kind` — see "SSE event vocabulary" below                                                                               | stable (consumed by `bus.ts`, `routes/runs.ts`, `web/src/api.ts`) |
-| `BlockStatus`    | type     | `"pending" \| "running" \| "done" \| "failed" \| "skipped"`                                                                                    | stable    |
-| `RunHandle`      | type     | `{ run: Run }` — declared, not used at runtime today                                                                                           | evolving — candidate for removal |
-| `chatWithRetry`  | function | `(client, request, isCancelled, setActiveController, onRetry) => Promise<ChatResponse>` — module-internal but exercised by both `runAiSubGoal` and `runStatelessStep` | **misplaced** — must move to `infrastructure/llm/chatWithRetry.ts` per `_LAYERS.md` (see §6). Not exported today. |
+| Symbol          | Kind     | Signature / shape                                                                                                                                                                                          | Stability                                                                                                                                |
+| --------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `runAgent`      | function | `(runId: number, taskId: number, instruction: string, stepsJson: string \| null, emit: (e: AgentEvent) => void) => Promise<{ status: "done" \| "error" \| "cancelled"; result?: string; error?: string }>` | stable — sole entry point invoked by `routes/runs.ts` IIFE. **Must not throw**; all errors are returned as `{ status: "error", error }`. |
+| `AgentEvent`    | type     | discriminated union on `kind` — see "SSE event vocabulary" below                                                                                                                                           | stable (consumed by `bus.ts`, `routes/runs.ts`, `web/src/api.ts`)                                                                        |
+| `BlockStatus`   | type     | `"pending" \| "running" \| "done" \| "failed" \| "skipped"`                                                                                                                                                | stable                                                                                                                                   |
+| `RunHandle`     | type     | `{ run: Run }` — declared, not used at runtime today                                                                                                                                                       | evolving — candidate for removal                                                                                                         |
+| `chatWithRetry` | function | `(client, request, isCancelled, setActiveController, onRetry) => Promise<ChatResponse>` — module-internal but exercised by both `runAiSubGoal` and `runStatelessStep`                                      | **misplaced** — must move to `infrastructure/llm/chatWithRetry.ts` per `_LAYERS.md` (see §6). Not exported today.                        |
 
 All other names in this file (`ExecCtx`, `BlockOutcome`, `AiSubOutcome`, `StatelessOutcome`, `executeBlocks`, `executeBlock`, `runAiSubGoal`, `runStatelessStep`, `runVerifyBlock`, `runQuestionnaireBlock`, `enrichQuestionsWithVision`, `runClaudeRescue`, `generateLesson`, `buildLessonContext`, `buildStatelessUserPrompt`, `pruneOldImages`, `toolsForAiBlock`, `blockSummary`, `emitPageState`, `isTransientLLMError`, the system-prompt constants) are intentionally not exported.
 
 ### `runAgent` runtime contract
 
 - **Single-call lifecycle.** Caller (the `routes/runs.ts` IIFE) calls `runAgent` exactly once per `runId`. `runAgent` itself calls `registerPause(runId)`, `registerCancel(runId, callback)`, and is responsible for `clearPause(runId)` + `clearCancel(runId)` in its `finally` block.
-- **Browser ownership.** Constructs a `new Session(runId)` and calls `session.start()` at entry, `session.close()` in `finally`. The persistent Chromium *context* survives; only the per-run tab is opened/closed.
+- **Browser ownership.** Constructs a `new Session(runId)` and calls `session.start()` at entry, `session.close()` in `finally`. The persistent Chromium _context_ survives; only the per-run tab is opened/closed.
 - **Returns one of three terminal shapes:** `{ status: "done", result }`, `{ status: "error", error }`, or `{ status: "cancelled", error: "Cancelled by user" }`. Never throws under contract.
 - **Emits one terminal `final` event** on `done` (with the last block's summary or `"All blocks completed"`); does NOT emit `final` on `error` or `cancelled`. The route's IIFE owns the SSE `end` frame.
 
@@ -42,21 +42,21 @@ All other names in this file (`ExecCtx`, `BlockOutcome`, `AiSubOutcome`, `Statel
 
 The bus and the `RunView` UI depend on this surface. Every event carries `kind`; `block_id` is attached for events that originate inside a block.
 
-| `kind`         | Payload shape (beyond `kind`)                                                                                              | Emitted from                                                                 |
-|----------------|----------------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------|
-| `block_start`  | `{ block_id: string; block_kind: BlockKind; summary: string; path: string[] }`                                             | `executeBlocks` before each block (incl. nested inside `for_each`)           |
-| `block_end`    | `{ block_id; block_kind; status: BlockStatus; result?: string; error?: string; details?: unknown; path: string[] }`        | `executeBlocks` after each block, **and** a second time after a successful rescue (see I7) |
-| `thought`      | `{ text: string; block_id?: string }`                                                                                      | both `runAiSubGoal` and `runStatelessStep` when assistant content non-empty  |
-| `tool_call`    | `{ name: string; args: unknown; block_id?: string }`                                                                       | once per tool call before dispatch                                           |
-| `tool_result`  | `{ name: string; result: ToolResult; screenshotPath?: string; block_id?: string }`                                         | once per tool call after dispatch (incl. virtual `finish_step`/`done` interceptions and refused `act` whitelist hits) |
-| `page_state`   | `{ url: string; title: string }`                                                                                           | after `navigate`, after auto-snapshot, on initial sub-goal snapshot, after `snapshot()` tool call |
-| `stats`        | `{ model: string; prompt_tokens: number; output_tokens: number; eval_duration_ms: number; tps: number }`                   | once per LLM response in both loop kinds                                     |
-| `var_set`      | `{ name: string; preview: string }`                                                                                        | `extract` block on success, questionnaire block at end                       |
-| `remember`     | `{ note: string }`                                                                                                         | `remember` tool from stateless steps; questionnaire block at start (synthetic) |
-| `paused`       | `{ reason?: string; auto?: boolean }`                                                                                      | login auto-pause, stall auto-pause, `pause` block, `pauseAfter` flag, `verify` `on_fail: "pause"` |
-| `resumed`      | `{}`                                                                                                                       | **Not emitted by this module today.** The `resumed` SSE event is published by `routes/runs.ts` on `POST /resume`. ⚠️ Drift — see §6. |
-| `error`        | `{ error: string; block_id?: string }`                                                                                     | top-level run failure, "task has no steps"                                   |
-| `final`        | `{ answer: string }`                                                                                                       | exactly once on `status: "done"` exit                                        |
+| `kind`        | Payload shape (beyond `kind`)                                                                                       | Emitted from                                                                                                                         |
+| ------------- | ------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `block_start` | `{ block_id: string; block_kind: BlockKind; summary: string; path: string[] }`                                      | `executeBlocks` before each block (incl. nested inside `for_each`)                                                                   |
+| `block_end`   | `{ block_id; block_kind; status: BlockStatus; result?: string; error?: string; details?: unknown; path: string[] }` | `executeBlocks` after each block, **and** a second time after a successful rescue (see I7)                                           |
+| `thought`     | `{ text: string; block_id?: string }`                                                                               | both `runAiSubGoal` and `runStatelessStep` when assistant content non-empty                                                          |
+| `tool_call`   | `{ name: string; args: unknown; block_id?: string }`                                                                | once per tool call before dispatch                                                                                                   |
+| `tool_result` | `{ name: string; result: ToolResult; screenshotPath?: string; block_id?: string }`                                  | once per tool call after dispatch (incl. virtual `finish_step`/`done` interceptions and refused `act` whitelist hits)                |
+| `page_state`  | `{ url: string; title: string }`                                                                                    | after `navigate`, after auto-snapshot, on initial sub-goal snapshot, after `snapshot()` tool call                                    |
+| `stats`       | `{ model: string; prompt_tokens: number; output_tokens: number; eval_duration_ms: number; tps: number }`            | once per LLM response in both loop kinds                                                                                             |
+| `var_set`     | `{ name: string; preview: string }`                                                                                 | `extract` block on success, questionnaire block at end                                                                               |
+| `remember`    | `{ note: string }`                                                                                                  | `remember` tool from stateless steps; questionnaire block at start (synthetic)                                                       |
+| `paused`      | `{ reason?: string; auto?: boolean }`                                                                               | login auto-pause, stall auto-pause, `pause` block, `pauseAfter` flag, `verify` `on_fail: "pause"`                                    |
+| `resumed`     | `{}`                                                                                                                | **Not emitted by this module today.** The `resumed` SSE event is published by `routes/runs.ts` on `POST /resume`. ⚠️ Drift — see §6. |
+| `error`       | `{ error: string; block_id?: string }`                                                                              | top-level run failure, "task has no steps"                                                                                           |
+| `final`       | `{ answer: string }`                                                                                                | exactly once on `status: "done"` exit                                                                                                |
 
 `tps` is computed as `(completion_tokens / duration_ms) * 1000`; **not** Ollama-native eval timings (those don't flow through `chatOnce` — see `llm-client.md` §4).
 
@@ -64,18 +64,18 @@ The bus and the `RunView` UI depend on this surface. Every event carries `kind`;
 
 - **`steps` rows** persisted via prepared `INSERT INTO steps (run_id, idx, kind, payload, screenshot_path)`. `idx` is monotonic per run, assigned by an in-memory counter (`stepIdx++`). Every persisted kind:
 
-  | `steps.kind`        | Payload JSON shape                                                                              | Mirrors SSE event? |
-  |---------------------|--------------------------------------------------------------------------------------------------|--------------------|
-  | `block_start`       | `{ id, kind, summary, path }`                                                                    | yes (`block_start`) |
-  | `block_end`         | `{ id, kind, status, result?, error?, details?, path }`                                          | yes (`block_end`)   |
-  | `thought`           | `{ text, block_id }`                                                                             | yes                 |
-  | `tool_call`         | `{ name, args, block_id }`                                                                       | yes                 |
-  | `tool_result`       | `{ name, ok, text, data?, block_id }` + optional `screenshot_path` column                        | yes                 |
-  | `var_set`           | `{ name, preview }` (extract) or `{ name, preview, unanswered }` (questionnaire)                 | yes                 |
-  | `remember`          | `{ note }`                                                                                       | yes                 |
-  | `error`             | `{ error }`                                                                                      | yes                 |
-  | `final`             | `{ answer }`                                                                                     | yes                 |
-  | `messages_export`   | `{ block_id, block_kind, instruction, rescue_model, local_status, local_error, local_step_count, rescue_status, rescue_step_count, local_messages, rescue_messages }` — written *only* by `runClaudeRescue` | no (training-data sink only) |
+  | `steps.kind`      | Payload JSON shape                                                                                                                                                                                          | Mirrors SSE event?           |
+  | ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------- |
+  | `block_start`     | `{ id, kind, summary, path }`                                                                                                                                                                               | yes (`block_start`)          |
+  | `block_end`       | `{ id, kind, status, result?, error?, details?, path }`                                                                                                                                                     | yes (`block_end`)            |
+  | `thought`         | `{ text, block_id }`                                                                                                                                                                                        | yes                          |
+  | `tool_call`       | `{ name, args, block_id }`                                                                                                                                                                                  | yes                          |
+  | `tool_result`     | `{ name, ok, text, data?, block_id }` + optional `screenshot_path` column                                                                                                                                   | yes                          |
+  | `var_set`         | `{ name, preview }` (extract) or `{ name, preview, unanswered }` (questionnaire)                                                                                                                            | yes                          |
+  | `remember`        | `{ note }`                                                                                                                                                                                                  | yes                          |
+  | `error`           | `{ error }`                                                                                                                                                                                                 | yes                          |
+  | `final`           | `{ answer }`                                                                                                                                                                                                | yes                          |
+  | `messages_export` | `{ block_id, block_kind, instruction, rescue_model, local_status, local_error, local_step_count, rescue_status, rescue_step_count, local_messages, rescue_messages }` — written _only_ by `runClaudeRescue` | no (training-data sink only) |
 
   ⚠️ The `Step.kind` literal union in `db.ts` lists only five kinds (`thought | tool_call | tool_result | error | final`). This module persists ten. See `persistence.md` §6 and §6 below.
 
@@ -100,12 +100,12 @@ This module emits the following named events. Documented in `observability-log.m
 
 ### Errors
 
-| Error / failure mode                                      | Returned when                                              | Caller should…                                  |
-|-----------------------------------------------------------|------------------------------------------------------------|-------------------------------------------------|
-| `{ status: "error", error: "Task has no steps" }`         | `parseBlocks` returned an empty array                      | finalize row as `error`; emit `end`             |
-| `{ status: "error", error: <Error.message> }`             | unhandled throw inside `runAgent`'s `try` (defensive only — block executor catches its own throws) | finalize row as `error`             |
-| `{ status: "cancelled", error: "Cancelled by user" }`     | `cancelled` flag observed at any safe boundary OR thrown abort during cancel | finalize row as `cancelled`         |
-| `{ status: "done", result }`                              | every block reached `done` / `skipped` (or `done`-via-rescue) | finalize row as `done` with `result` |
+| Error / failure mode                                  | Returned when                                                                                      | Caller should…                       |
+| ----------------------------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------ |
+| `{ status: "error", error: "Task has no steps" }`     | `parseBlocks` returned an empty array                                                              | finalize row as `error`; emit `end`  |
+| `{ status: "error", error: <Error.message> }`         | unhandled throw inside `runAgent`'s `try` (defensive only — block executor catches its own throws) | finalize row as `error`              |
+| `{ status: "cancelled", error: "Cancelled by user" }` | `cancelled` flag observed at any safe boundary OR thrown abort during cancel                       | finalize row as `cancelled`          |
+| `{ status: "done", result }`                          | every block reached `done` / `skipped` (or `done`-via-rescue)                                      | finalize row as `done` with `result` |
 
 ## 3. Invariants
 
@@ -116,7 +116,7 @@ Each is independently falsifiable.
 - **I3 — Exactly one `final` SSE event per `done` run.** Emitted in the `try` block of `runAgent` only. Not emitted on `error`/`cancelled`. Falsifiable: count `final` events across paths.
 - **I4 — `block_start`/`block_end` are paired per block, in order, and nest correctly under `for_each`.** Each block emits exactly one `block_start` before any inner work and at least one `block_end` after, with the same `block_id`. `path` carries parent ids for nested execution (set by `for_each`'s `childCtx`). Falsifiable: walk an emitted event log and assert pairing + `path` correctness.
 - **I5 — Login auto-pause is one-shot per run.** Guarded by `ctx.loginAutoPaused.value`. Once true, no further `detectLoginPrompt` calls run. Reset never happens within a run. Falsifiable: simulate a page that always reports login; assert exactly one `paused` event of that kind.
-- **I6 — Stall auto-pause is one-shot per *sub-goal*.** Guarded by `stallPaused` local in `runAiSubGoal`. Resets between blocks (each `runAiSubGoal` invocation starts fresh). Triggers when the last `STALL_REPEAT_THRESHOLD = 3` tool calls have identical `(name, JSON.stringify(args))`. Falsifiable: stub a model that emits the same `act` 3× — exactly one stall pause is published; a 4th identical call does not re-trigger.
+- **I6 — Stall auto-pause is one-shot per _sub-goal_.** Guarded by `stallPaused` local in `runAiSubGoal`. Resets between blocks (each `runAiSubGoal` invocation starts fresh). Triggers when the last `STALL_REPEAT_THRESHOLD = 3` tool calls have identical `(name, JSON.stringify(args))`. Falsifiable: stub a model that emits the same `act` 3× — exactly one stall pause is published; a 4th identical call does not re-trigger.
 - **I7 — Auto-snapshot is attached to `navigate` and `act` results by the agent, not the tool.** After a successful `navigate` or `act` whose result has no `image_base64`, `runAiSubGoal` calls `takeSnapshot` and appends `\n\n--- post-action snapshot (<url>) ---\n<text>` plus the screenshot to the tool message and `tool_result` event. Falsifiable: confirm `executeTool` does not call `takeSnapshot` itself (cross-spec with `tools.md` I8); confirm only `runAiSubGoal` does and only on the two trigger names.
 - **I8 — Image pruning keeps the last `KEEP_RECENT_IMAGES` (default 3) image arrays per chat call.** `pruneOldImages` is called on every `messages` array immediately before `chatWithRetry` in `runAiSubGoal`. Older messages keep their text content with a marker appended; only the `images` field is dropped. Falsifiable: feed a 10-image history with `KEEP_RECENT_IMAGES=3`; assert exactly 3 retained image arrays in the prepared payload.
 - **I9 — `extract` writes to a per-run variable map; `for_each` reads `$varname` array, sets `$item` and `$item_index`.** Variable map is `ctx.vars: Map<string, unknown>`. `for_each.items` resolves via `$name` (variable lookup), `[…]` (literal JSON), or bare `name` (variable lookup as a kindness). Falsifiable: §3 of `blocks.md` plus a test that confirms `vars.delete(itemVar)` runs after the loop body.
@@ -128,7 +128,7 @@ Each is independently falsifiable.
 - **I15 — Rescue is gated by a DB setting + an env key.** `claudeClient !== null` requires `getSetting("rescue_enabled") === "true"` AND `process.env.ANTHROPIC_API_KEY` set at `runAgent` start. Disabling rescue mid-run does not affect an already-started run. Falsifiable: unset both conditions; assert `claudeClient === null` and rescue branches are unreachable.
 - **I16 — Rescue produces exactly one `messages_export` row per rescued block.** Even if rescue itself fails. Even if lesson generation fails. Falsifiable: count `steps.kind = 'messages_export'` rows for a run with N rescued blocks; expect N.
 - **I17 — `runAgent` never throws under contract.** All thrown exceptions inside `executeBlocks`/`executeBlock` are caught and converted to `{ status: "failed", error }` outcomes; the top-level `try/catch` in `runAgent` is defensive. Falsifiable: hostile fault injection at each `await` site.
-- **I18 — Rescue can only be triggered when a Claude client exists.** `runClaudeRescue` is only called when `outcome.status === "failed"` AND `ctx.claudeClient !== null`. The `isRescueRequested()` flag is *checked* throughout the sub-loop but only set if `rescueOnCancel && claudeClient !== null` at registration time. Falsifiable: with rescue disabled, `rescueRequested` is never set and the user-rescue branches are dead.
+- **I18 — Rescue can only be triggered when a Claude client exists.** `runClaudeRescue` is only called when `outcome.status === "failed"` AND `ctx.claudeClient !== null`. The `isRescueRequested()` flag is _checked_ throughout the sub-loop but only set if `rescueOnCancel && claudeClient !== null` at registration time. Falsifiable: with rescue disabled, `rescueRequested` is never set and the user-rescue branches are dead.
 - **I19 — Questionnaire ids are stable for the duration of one questionnaire block.** `formScan` runs once at block entry; per-question `runStatelessStep` calls pass `includeSnapshot: false` so `takeSnapshot` does not re-tag and clobber `data-tickle-id` numbering. The `allowedActIds` whitelist refuses any `act` with an out-of-set id. Cross-spec with `form-scan.md` §3.15.
 - **I20 — Anchor-URL guard halts a questionnaire that navigated.** If `ctx.session.page.url() !== anchorUrl` after a question, the remaining questions are marked unanswered and the loop breaks. Falsifiable: stub a question whose `act` triggers `goto`; assert the loop stops and remaining questions appear in `unanswered`.
 
@@ -146,7 +146,7 @@ This section is the refactor plan. Every concern in `agent.ts` is listed with: c
 ### 4.2 `executeBlocks` walker — `application/executeBlocks.ts`
 
 - **Current:** lines `288–396`.
-- **Moves:** the for-loop, the `block_start`/`block_end` SSE+persist boilerplate (extract a `withBlockSpan(ctx, block, fn)` helper to reduce duplication), the `pauseAfter` handling, and the post-failure rescue dispatch (the rescue dispatch is the most subtle part — it emits a *second* `block_end` with `status: "done"` if rescue succeeds — see I7 + §6).
+- **Moves:** the for-loop, the `block_start`/`block_end` SSE+persist boilerplate (extract a `withBlockSpan(ctx, block, fn)` helper to reduce duplication), the `pauseAfter` handling, and the post-failure rescue dispatch (the rescue dispatch is the most subtle part — it emits a _second_ `block_end` with `status: "done"` if rescue succeeds — see I7 + §6).
 - **`blockSummary`** can move to `domain/blocks.ts` (it has no I/O); it is a pure presentation helper over `Block + vars`.
 
 ### 4.3 `executeBlock` dispatcher — `application/executeBlock.ts`
@@ -259,41 +259,41 @@ Nothing is tested today. Every `§3` invariant is `TODO(test)`. Recommended test
 - **Integration with mocked LLM/browser** — per-block executors using a `LlmClient` fake (injectable via `ExecCtx.client`) and a `Session` fake (`page` mock or in-process page via `playwright/test`). This is where I1, I2, I4–I20 are validated.
 - **Integration with real LLM/browser** — only manual smoke today; not gating CI per CLAUDE.md.
 
-| Spec section / claim                                                         | Test file | Test name | Status     |
-|------------------------------------------------------------------------------|-----------|-----------|------------|
-| §3 I1 cancellation observed at every safe boundary                          | —         | —         | TODO(test) |
-| §3 I1 pause observed at every safe boundary                                 | —         | —         | TODO(test) |
-| §3 I2 terminal status is one of three                                        | —         | —         | TODO(test) |
-| §3 I3 exactly one `final` event on `done`                                    | —         | —         | TODO(test) |
-| §3 I3 no `final` event on `error` or `cancelled`                             | —         | —         | TODO(test) |
-| §3 I4 `block_start`/`block_end` pairing and `path` nesting under `for_each`  | —         | —         | TODO(test) |
-| §3 I5 login auto-pause is one-shot per run                                   | —         | —         | TODO(test) |
-| §3 I6 stall pause triggers at exactly the 3rd identical call, not the 4th    | —         | —         | TODO(test) |
-| §3 I6 stall state resets between blocks                                      | —         | —         | TODO(test) |
-| §3 I7 auto-snapshot only on `navigate`/`act`, only when no native image      | —         | —         | TODO(test) |
-| §3 I7 auto-snapshot is from the agent, not `executeTool`                     | —         | —         | TODO(test, static-grep) |
-| §3 I8 image pruning keeps last `KEEP_RECENT_IMAGES` arrays                   | —         | —         | TODO(test) |
-| §3 I8 pruning preserves text content of older messages                       | —         | —         | TODO(test) |
-| §3 I9 `extract` writes to `vars`; emits `var_set`                            | —         | —         | TODO(test) |
-| §3 I9 `for_each` resolves `$name`, JSON literal, and bare name forms         | —         | —         | TODO(test) |
-| §3 I10 `substituteVars` is invoked on every string param                     | —         | —         | TODO(test, table-driven) |
-| §3 I11 cancellation between LLM retry attempts                               | —         | —         | TODO(test) |
-| §3 I12 `vars` is per-run, not module-global                                  | —         | —         | TODO(test) |
-| §3 I13 `finish_step` never appears as a stalled call                         | —         | —         | TODO(test) |
-| §3 I14 cancel callback registered before first cancel-checkable boundary     | —         | —         | TODO(test) |
-| §3 I15 rescue gated on setting AND env key at run start                      | —         | —         | TODO(test) |
-| §3 I16 exactly one `messages_export` row per rescued block                   | —         | —         | TODO(test) |
-| §3 I17 `runAgent` does not throw                                             | —         | —         | TODO(test, fault injection) |
-| §3 I18 user-rescue branches dead when rescue disabled                        | —         | —         | TODO(test) |
-| §3 I19 questionnaire ids stable; whitelist refuses out-of-set ids            | —         | —         | TODO(test) |
-| §3 I20 anchor-URL drift halts questionnaire                                  | —         | —         | TODO(test) |
-| §2 SSE vocabulary completeness (every `kind` produced by at least one path)  | —         | —         | TODO(test) |
-| §2 every persisted `steps.kind` matches the documented payload shape         | —         | —         | TODO(test) |
-| §2 trace event vocabulary completeness                                       | —         | —         | TODO(test, static-grep cross-checked with observability-log) |
-| §6 `toolDefs` exposes neither `finish` nor `finish_step` (interception correct) | `__tests__/tools.test.ts` | `does not include finish` / `does not include finish_step either` | done |
-| §6 ⚠️ `block_end` is emitted twice on a successful rescue                    | —         | —         | TODO(test) |
-| §6 ⚠️ `resumed` event is published by route, not by agent                    | —         | —         | TODO(test) |
-| §6 ⚠️ `ctx.memory` cap (`MAX_MEMORY_ENTRIES = 200`)                          | —         | —         | TODO(test) |
+| Spec section / claim                                                            | Test file                 | Test name                                                         | Status                                                       |
+| ------------------------------------------------------------------------------- | ------------------------- | ----------------------------------------------------------------- | ------------------------------------------------------------ |
+| §3 I1 cancellation observed at every safe boundary                              | —                         | —                                                                 | TODO(test)                                                   |
+| §3 I1 pause observed at every safe boundary                                     | —                         | —                                                                 | TODO(test)                                                   |
+| §3 I2 terminal status is one of three                                           | —                         | —                                                                 | TODO(test)                                                   |
+| §3 I3 exactly one `final` event on `done`                                       | —                         | —                                                                 | TODO(test)                                                   |
+| §3 I3 no `final` event on `error` or `cancelled`                                | —                         | —                                                                 | TODO(test)                                                   |
+| §3 I4 `block_start`/`block_end` pairing and `path` nesting under `for_each`     | —                         | —                                                                 | TODO(test)                                                   |
+| §3 I5 login auto-pause is one-shot per run                                      | —                         | —                                                                 | TODO(test)                                                   |
+| §3 I6 stall pause triggers at exactly the 3rd identical call, not the 4th       | —                         | —                                                                 | TODO(test)                                                   |
+| §3 I6 stall state resets between blocks                                         | —                         | —                                                                 | TODO(test)                                                   |
+| §3 I7 auto-snapshot only on `navigate`/`act`, only when no native image         | —                         | —                                                                 | TODO(test)                                                   |
+| §3 I7 auto-snapshot is from the agent, not `executeTool`                        | —                         | —                                                                 | TODO(test, static-grep)                                      |
+| §3 I8 image pruning keeps last `KEEP_RECENT_IMAGES` arrays                      | —                         | —                                                                 | TODO(test)                                                   |
+| §3 I8 pruning preserves text content of older messages                          | —                         | —                                                                 | TODO(test)                                                   |
+| §3 I9 `extract` writes to `vars`; emits `var_set`                               | —                         | —                                                                 | TODO(test)                                                   |
+| §3 I9 `for_each` resolves `$name`, JSON literal, and bare name forms            | —                         | —                                                                 | TODO(test)                                                   |
+| §3 I10 `substituteVars` is invoked on every string param                        | —                         | —                                                                 | TODO(test, table-driven)                                     |
+| §3 I11 cancellation between LLM retry attempts                                  | —                         | —                                                                 | TODO(test)                                                   |
+| §3 I12 `vars` is per-run, not module-global                                     | —                         | —                                                                 | TODO(test)                                                   |
+| §3 I13 `finish_step` never appears as a stalled call                            | —                         | —                                                                 | TODO(test)                                                   |
+| §3 I14 cancel callback registered before first cancel-checkable boundary        | —                         | —                                                                 | TODO(test)                                                   |
+| §3 I15 rescue gated on setting AND env key at run start                         | —                         | —                                                                 | TODO(test)                                                   |
+| §3 I16 exactly one `messages_export` row per rescued block                      | —                         | —                                                                 | TODO(test)                                                   |
+| §3 I17 `runAgent` does not throw                                                | —                         | —                                                                 | TODO(test, fault injection)                                  |
+| §3 I18 user-rescue branches dead when rescue disabled                           | —                         | —                                                                 | TODO(test)                                                   |
+| §3 I19 questionnaire ids stable; whitelist refuses out-of-set ids               | —                         | —                                                                 | TODO(test)                                                   |
+| §3 I20 anchor-URL drift halts questionnaire                                     | —                         | —                                                                 | TODO(test)                                                   |
+| §2 SSE vocabulary completeness (every `kind` produced by at least one path)     | —                         | —                                                                 | TODO(test)                                                   |
+| §2 every persisted `steps.kind` matches the documented payload shape            | —                         | —                                                                 | TODO(test)                                                   |
+| §2 trace event vocabulary completeness                                          | —                         | —                                                                 | TODO(test, static-grep cross-checked with observability-log) |
+| §6 `toolDefs` exposes neither `finish` nor `finish_step` (interception correct) | `__tests__/tools.test.ts` | `does not include finish` / `does not include finish_step either` | done                                                         |
+| §6 ⚠️ `block_end` is emitted twice on a successful rescue                       | —                         | —                                                                 | TODO(test)                                                   |
+| §6 ⚠️ `resumed` event is published by route, not by agent                       | —                         | —                                                                 | TODO(test)                                                   |
+| §6 ⚠️ `ctx.memory` cap (`MAX_MEMORY_ENTRIES = 200`)                             | —                         | —                                                                 | TODO(test)                                                   |
 
 ### Deliberately not tested
 
@@ -321,10 +321,10 @@ Nothing is tested today. Every `§3` invariant is `TODO(test)`. Recommended test
 
 - ❓ **Should `ctx.memory` (the `remember` tool's append-only log) persist across a run via the `steps` table replay, or in a dedicated column?** Today it lives in-memory on `ExecCtx` and is reconstructed from `remember`-kind `steps` rows only via the SSE replay. A page refresh during a run reads `remember` events but does NOT rebuild the model-facing `GLOBAL CONTEXT` in subsequent stateless calls. Falsifiable bug. Fix: persist `ctx.memory` shape on each `remember`, or rebuild from `steps WHERE kind='remember'` at run resume (no resume mechanism exists today, so this is latent).
 - ❓ **`MAX_MEMORY_ENTRIES = 200` and `MAX_MEMORY_ENTRY_CHARS = 500`.** These are picked by feel. No cap on total `memory` payload size shipped to the model per stateless call (200 × 500 = 100KB). For a long run, this dominates the prompt budget. Either trim to a sliding window when constructing `memorySection`, or rank by recency.
-- ❓ **Stall detector applies only to multi-turn loops.** Stateless steps cannot stall (one shot), but a *block* of "extract" calls in a loop *could* (model returns `done(success=false)` 3× in a row). No per-block stall guard exists. Probably YAGNI.
+- ❓ **Stall detector applies only to multi-turn loops.** Stateless steps cannot stall (one shot), but a _block_ of "extract" calls in a loop _could_ (model returns `done(success=false)` 3× in a row). No per-block stall guard exists. Probably YAGNI.
 - ❓ **`for_each` shares `vars` with parent scope by spread reference (I12).** Inner loop writes are visible to outer scope. This is intentional (an `extract` inside a `for_each` body should be readable after the loop) but the only signal is variable name conventions. Consider explicit scoping rules: top-level vars vs loop-local vars (e.g. `local:` prefix).
 - ❓ **Rescue runs on the SAME block id.** The rescue's transcript is persisted under the original block id, so the SSE event `block_end` carries the rescue's outcome under the same id — but the `messages_export` row is also under that block id. If the same block is rescued twice (somehow — currently not possible since `runClaudeRescue` is only called once per block), the export rows would not disambiguate. Latent.
 - ❓ **The `verify` block's `on_fail: "pause"` resumes silently as `done`.** Lines `508–515`: a paused-then-resumed verify produces `{ status: "done", summary: "Verify failed (resumed): <reason>" }`. The block's `block_end` SSE event therefore says `status: "done"` with the failure reason in `result`. Consumers parsing block status alone miss the failure. Either introduce a `status: "warned"` or pass the original-failed status alongside.
 - ❓ **The agent's `claudeClient` is constructed once per run.** If the user changes `rescue_enabled` mid-run (via a settings UI), it does not take effect until the next run. Document or fix. (I15 enshrines this.)
 - ❓ **`buildLessonContext` searches `lessons` for top-5 by FTS rank against the current block's instruction.** False positives (lessons from unrelated tasks ranked highly because of a shared word like "click") could mislead the model. Tracking which lessons actually helped — and downweighting unhelpful ones — is a longer-term concern.
-- ❓ **Two LLM clients are constructed even when rescue is disabled.** Wait — re-read: `claudeClient = rescueEnabled && ANTHROPIC_API_KEY ? newAnthropicClient(...) : null`. So rescue-disabled means `claudeClient === null` and no Anthropic client is created. Good. But `newLlmClient()` (the local one) is *always* created at run start, even for tasks that contain only `navigate` / `pause` blocks (no LLM calls). Trivial cost; flag for completeness.
+- ❓ **Two LLM clients are constructed even when rescue is disabled.** Wait — re-read: `claudeClient = rescueEnabled && ANTHROPIC_API_KEY ? newAnthropicClient(...) : null`. So rescue-disabled means `claudeClient === null` and no Anthropic client is created. Good. But `newLlmClient()` (the local one) is _always_ created at run start, even for tasks that contain only `navigate` / `pause` blocks (no LLM calls). Trivial cost; flag for completeness.

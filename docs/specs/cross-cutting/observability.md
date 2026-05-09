@@ -6,17 +6,18 @@ Tickle has three observability surfaces. Knowing which to use, and how they rela
 
 ## The three surfaces
 
-| Surface       | Lives in                         | Lifetime         | Audience                                       |
-|---------------|----------------------------------|------------------|------------------------------------------------|
-| **Trace log** | `server/data/tickle.log` (JSONL) | Forever, rotated | Operators after the fact; `tail -f` / `jq`     |
-| **DB steps**  | `steps` table (per [`persistence.md`](../server/persistence.md)) | Forever | UI replay on reconnect; long-term inspection   |
-| **SSE bus**   | `bus.ts` → `GET /api/runs/:id/stream` | Run lifetime | UI live-updating while a run is active         |
+| Surface       | Lives in                                                         | Lifetime         | Audience                                     |
+| ------------- | ---------------------------------------------------------------- | ---------------- | -------------------------------------------- |
+| **Trace log** | `server/data/tickle.log` (JSONL)                                 | Forever, rotated | Operators after the fact; `tail -f` / `jq`   |
+| **DB steps**  | `steps` table (per [`persistence.md`](../server/persistence.md)) | Forever          | UI replay on reconnect; long-term inspection |
+| **SSE bus**   | `bus.ts` → `GET /api/runs/:id/stream`                            | Run lifetime     | UI live-updating while a run is active       |
 
 All three are populated by `agent.ts` (per [`server/agent.md`](../server/agent.md) §2 contract). The same logical event often lands in multiple surfaces — **but not all events go everywhere.**
 
 ## Event vocabulary — single source of truth (target)
 
 Today the event set is implicit and spread across:
+
 - `bus.ts::AgentEvent` (publisher type)
 - `db.ts::Step["kind"]` (persistence type)
 - `RunView.tsx` event-switch (consumer)
@@ -24,6 +25,7 @@ Today the event set is implicit and spread across:
 - CLAUDE.md "SSE event stream" section (docs)
 
 These five lists disagree with each other. Specifically:
+
 - `Step["kind"]` lists 5 kinds; agent persists 9 (`block_start`, `block_end`, `var_set`, `remember` missing). [`persistence.md`](../server/persistence.md), [`agent.md`](../server/agent.md).
 - `AgentEvent` includes `resumed` but the agent never publishes it — `routes/runs.ts` does.
 - `page_state` and `stats` are advertised in CLAUDE.md as persisted but they aren't — live-only. [`agent.md`](../server/agent.md).
@@ -36,22 +38,22 @@ These five lists disagree with each other. Specifically:
 
 For each event, where it lands today. ✅ = lands; ⛔ = does not.
 
-| Event           | SSE | DB `steps` | Trace log | Notes                                                |
-|-----------------|-----|------------|-----------|------------------------------------------------------|
-| `block_start`   | ✅  | ✅         | ✅        |                                                       |
-| `block_end`     | ✅  | ✅         | ✅        | 🔴 emitted twice on rescue success                    |
-| `thought`       | ✅  | ✅         | ⛔        |                                                       |
-| `tool_call`     | ✅  | ✅         | ✅        |                                                       |
-| `tool_result`   | ✅  | ✅         | ✅        |                                                       |
-| `var_set`       | ✅  | ✅         | ✅        | `Step["kind"]` type doesn't include this              |
-| `remember`      | ✅  | ✅         | ✅        | `Step["kind"]` type doesn't include this              |
-| `page_state`    | ✅  | ⛔         | ⛔        | 🟠 reconnects miss it (CLAUDE.md says it's persisted) |
-| `stats`         | ✅  | ⛔         | ⛔        | 🟠 reconnects miss it                                 |
-| `paused`        | ✅  | ✅         | ✅        |                                                       |
-| `resumed`       | ✅  | ✅         | ✅        | Emitted by routes, not agent                          |
-| `error`         | ✅  | ✅         | ✅        |                                                       |
-| `final`         | ✅  | ✅         | ✅        |                                                       |
-| `end`           | ✅  | ⛔         | ✅        | End marker — bus deletes topic 5s after               |
+| Event         | SSE | DB `steps` | Trace log | Notes                                                 |
+| ------------- | --- | ---------- | --------- | ----------------------------------------------------- |
+| `block_start` | ✅  | ✅         | ✅        |                                                       |
+| `block_end`   | ✅  | ✅         | ✅        | 🔴 emitted twice on rescue success                    |
+| `thought`     | ✅  | ✅         | ⛔        |                                                       |
+| `tool_call`   | ✅  | ✅         | ✅        |                                                       |
+| `tool_result` | ✅  | ✅         | ✅        |                                                       |
+| `var_set`     | ✅  | ✅         | ✅        | `Step["kind"]` type doesn't include this              |
+| `remember`    | ✅  | ✅         | ✅        | `Step["kind"]` type doesn't include this              |
+| `page_state`  | ✅  | ⛔         | ⛔        | 🟠 reconnects miss it (CLAUDE.md says it's persisted) |
+| `stats`       | ✅  | ⛔         | ⛔        | 🟠 reconnects miss it                                 |
+| `paused`      | ✅  | ✅         | ✅        |                                                       |
+| `resumed`     | ✅  | ✅         | ✅        | Emitted by routes, not agent                          |
+| `error`       | ✅  | ✅         | ✅        |                                                       |
+| `final`       | ✅  | ✅         | ✅        |                                                       |
+| `end`         | ✅  | ⛔         | ✅        | End marker — bus deletes topic 5s after               |
 
 ## Rotation, redaction, retention
 
@@ -75,6 +77,7 @@ For each event, where it lands today. ✅ = lands; ⛔ = does not.
 ## Correlation across surfaces
 
 Today there is **no shared correlation ID** beyond `runId`. Within a run:
+
 - `step_id` is the DB primary key; trace log doesn't include it.
 - `block_id` is on every event but not consistently echoed in trace.
 - The trace `t` timestamp and the DB `created_at` should agree, but no test enforces that.

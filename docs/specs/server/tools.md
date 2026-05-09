@@ -4,11 +4,11 @@
 
 ## 1. Why
 
-The LLM cannot drive a browser directly — it can only emit OpenAI-style tool calls. This module is the bridge: it declares the *exact* surface the model is allowed to use (`toolDefs`) and dispatches each named call against a `Session` (`executeTool`). Adding a new model capability means adding a tool here and nowhere else; the system prompt and the agent loop both follow from this surface.
+The LLM cannot drive a browser directly — it can only emit OpenAI-style tool calls. This module is the bridge: it declares the _exact_ surface the model is allowed to use (`toolDefs`) and dispatches each named call against a `Session` (`executeTool`). Adding a new model capability means adding a tool here and nowhere else; the system prompt and the agent loop both follow from this surface.
 
 The shape is constrained by three things: (a) the OpenAI tool-call wire format expected by `llm.ts` and re-emitted by Ollama / LM Studio / vLLM / SGLang; (b) the snapshot-and-act paradigm — the model never writes selectors, it picks numeric ids out of the most recent `snapshot()` and calls `act(id, action, value?)`; (c) page content is hostile and must be filtered before re-entering the prompt.
 
-> **Non-obvious why:** `finish_step` is a *virtual* tool. It is appended to the model's tool list by `agent.ts::toolsForAiBlock` and intercepted by `runAiSubGoal` before dispatch — it never reaches `executeTool`. `toolDefs` deliberately does not declare it (and no longer declares an alias `finish`).
+> **Non-obvious why:** `finish_step` is a _virtual_ tool. It is appended to the model's tool list by `agent.ts::toolsForAiBlock` and intercepted by `runAiSubGoal` before dispatch — it never reaches `executeTool`. `toolDefs` deliberately does not declare it (and no longer declares an alias `finish`).
 >
 > **Non-obvious why:** `read_text` filters injection-risk DOM (hidden / zero-size / colour-camouflaged elements, `<script>` / `<style>` / `<template>`) because `read_text` output is concatenated into the next assistant prompt. That makes the page a prompt-injection vector unless invisible text is stripped before re-entry.
 
@@ -16,25 +16,25 @@ The shape is constrained by three things: (a) the OpenAI tool-call wire format e
 
 ### Exports
 
-| Symbol         | Kind   | Signature / shape                                                                | Stability |
-|----------------|--------|----------------------------------------------------------------------------------|-----------|
-| `toolDefs`     | const  | `readonly [{ type: "function"; function: { name; description; parameters } }, …]` (OpenAI tool-spec, `as const`) | stable |
-| `ToolResult`   | type   | `{ ok: true; text?: string; image_base64?: string; data?: unknown } \| { ok: false; error: string }` | stable |
-| `executeTool`  | function | `(session: Session, name: string, args: Record<string, unknown>) => Promise<ToolResult>` | stable |
+| Symbol        | Kind     | Signature / shape                                                                                                | Stability |
+| ------------- | -------- | ---------------------------------------------------------------------------------------------------------------- | --------- |
+| `toolDefs`    | const    | `readonly [{ type: "function"; function: { name; description; parameters } }, …]` (OpenAI tool-spec, `as const`) | stable    |
+| `ToolResult`  | type     | `{ ok: true; text?: string; image_base64?: string; data?: unknown } \| { ok: false; error: string }`             | stable    |
+| `executeTool` | function | `(session: Session, name: string, args: Record<string, unknown>) => Promise<ToolResult>`                         | stable    |
 
 ### Tool surface (shipped to the LLM)
 
-| Tool name       | Required args                | Optional args                              | Returns on success                                                                  | Auto-snapshot after? |
-|-----------------|------------------------------|--------------------------------------------|-------------------------------------------------------------------------------------|----------------------|
-| `navigate`      | `url: string` (http/https)   | —                                          | `{ ok: true, text: "Navigated to <final-url>" }`                                    | **yes** (in agent.ts) |
-| `snapshot`      | —                            | `query?: string`, `all?: boolean=false`, `max?: number=150` | `{ ok: true, text, image_base64, data: { elements, hidden_below_fold, url, title } }` | n/a (this **is** the snapshot) |
-| `act`           | `id: number`, `action: enum` | `value?: string`                           | `{ ok: true, text: "<verb-phrase> [id]" }`                                          | **yes** (in agent.ts) |
-| `read_text`     | —                            | `selector?: string` (CSS)                  | `{ ok: true, text: <≤6000 chars or "(empty)"> }`                                    | no |
-| `scroll`        | `pixels: number`             | —                                          | `{ ok: true, text: "Scrolled Npx" }`                                                | no |
-| `wait_for`      | `selector: string`           | `timeout_ms?: number=8000`                 | `{ ok: true, text: "Element <sel> present" }`                                       | no |
-| `press_key`     | `key: string`                | —                                          | `{ ok: true, text: "Pressed <key>" }`                                               | no |
-| `screenshot`    | —                            | —                                          | `{ ok: true, image_base64, text: "(screenshot attached)" }`                         | no (it returns one) |
-| `fetch_url`     | `url: string` (http/https)   | —                                          | `{ ok: true, text: "Fetched <final-url> (<n> chars, returning first <m>):\n\n<body>" }` (≤6000 chars body) | no (uses temp tab; main page untouched) |
+| Tool name    | Required args                | Optional args                                               | Returns on success                                                                                         | Auto-snapshot after?                    |
+| ------------ | ---------------------------- | ----------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- | --------------------------------------- |
+| `navigate`   | `url: string` (http/https)   | —                                                           | `{ ok: true, text: "Navigated to <final-url>" }`                                                           | **yes** (in agent.ts)                   |
+| `snapshot`   | —                            | `query?: string`, `all?: boolean=false`, `max?: number=150` | `{ ok: true, text, image_base64, data: { elements, hidden_below_fold, url, title } }`                      | n/a (this **is** the snapshot)          |
+| `act`        | `id: number`, `action: enum` | `value?: string`                                            | `{ ok: true, text: "<verb-phrase> [id]" }`                                                                 | **yes** (in agent.ts)                   |
+| `read_text`  | —                            | `selector?: string` (CSS)                                   | `{ ok: true, text: <≤6000 chars or "(empty)"> }`                                                           | no                                      |
+| `scroll`     | `pixels: number`             | —                                                           | `{ ok: true, text: "Scrolled Npx" }`                                                                       | no                                      |
+| `wait_for`   | `selector: string`           | `timeout_ms?: number=8000`                                  | `{ ok: true, text: "Element <sel> present" }`                                                              | no                                      |
+| `press_key`  | `key: string`                | —                                                           | `{ ok: true, text: "Pressed <key>" }`                                                                      | no                                      |
+| `screenshot` | —                            | —                                                           | `{ ok: true, image_base64, text: "(screenshot attached)" }`                                                | no (it returns one)                     |
+| `fetch_url`  | `url: string` (http/https)   | —                                                           | `{ ok: true, text: "Fetched <final-url> (<n> chars, returning first <m>):\n\n<body>" }` (≤6000 chars body) | no (uses temp tab; main page untouched) |
 
 `finish_step(success, output?, note?)` is appended to the LLM's tool list inside `agent.ts::toolsForAiBlock` and intercepted by `runAiSubGoal` before dispatch — it does not appear in `toolDefs` and never reaches `executeTool`.
 
@@ -42,29 +42,29 @@ The shape is constrained by three things: (a) the OpenAI tool-call wire format e
 
 `click | fill | press | check | uncheck | hover | select_option`
 
-| Action         | `value` required? | Behaviour                                                                                       |
-|----------------|-------------------|-------------------------------------------------------------------------------------------------|
-| `click`        | no                | `locator.click({ timeout: 8000 })`                                                              |
-| `fill`         | **yes** (string)  | `locator.fill(value, { timeout: 8000 })` — replaces input contents                              |
-| `press`        | **yes** (key)     | `locator.press(value, { timeout: 8000 })` — element-scoped key press                            |
-| `check`        | no                | `locator.check({ timeout: 8000 })`                                                              |
-| `uncheck`      | no                | `locator.uncheck({ timeout: 8000 })`                                                            |
-| `hover`        | no                | `locator.hover({ timeout: 8000 })`                                                              |
-| `select_option`| **yes**           | `locator.selectOption(value, { timeout: 8000 })` — Playwright matches by `value` attribute, label, or `<option>` text in that order. The schema description says "option text or value" — actual coverage is broader. ⚠️ See §6. |
+| Action          | `value` required? | Behaviour                                                                                                                                                                                                                        |
+| --------------- | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `click`         | no                | `locator.click({ timeout: 8000 })`                                                                                                                                                                                               |
+| `fill`          | **yes** (string)  | `locator.fill(value, { timeout: 8000 })` — replaces input contents                                                                                                                                                               |
+| `press`         | **yes** (key)     | `locator.press(value, { timeout: 8000 })` — element-scoped key press                                                                                                                                                             |
+| `check`         | no                | `locator.check({ timeout: 8000 })`                                                                                                                                                                                               |
+| `uncheck`       | no                | `locator.uncheck({ timeout: 8000 })`                                                                                                                                                                                             |
+| `hover`         | no                | `locator.hover({ timeout: 8000 })`                                                                                                                                                                                               |
+| `select_option` | **yes**           | `locator.selectOption(value, { timeout: 8000 })` — Playwright matches by `value` attribute, label, or `<option>` text in that order. The schema description says "option text or value" — actual coverage is broader. ⚠️ See §6. |
 
 ### Errors (return shape, never thrown)
 
-| Error                                                                                              | Returned when                                       | Caller should…                                |
-|----------------------------------------------------------------------------------------------------|-----------------------------------------------------|-----------------------------------------------|
-| `{ ok: false, error: "navigate.url must be http(s)://" }`                                          | non-http(s) URL passed to `navigate` or `fetch_url` | re-emit a corrected call                      |
-| `{ ok: false, error: "act.id must be a non-negative integer from the latest snapshot" }`           | `act.id` non-integer or negative                    | call `snapshot` again                         |
-| `` { ok: false, error: `No element with id ${id}. The page may have changed; call snapshot() again.` } `` | id not present in current DOM                | call `snapshot` again                         |
-| `{ ok: false, error: "act.fill requires a `value` string" }`                                       | `fill` / `select_option` missing `value`            | re-emit with `value`                          |
-| `{ ok: false, error: "act.press requires a `value` (key name)" }`                                  | `press` missing `value`                             | re-emit with `value`                          |
-| `` { ok: false, error: `Unknown action "${action}". Valid: click, fill, press, check, uncheck, hover, select_option.` } `` | `act.action` outside enum            | re-emit with valid action                     |
-| `` { ok: false, error: `fetch_url failed: <message>` } ``                                          | `fetch_url` goto/evaluate throws                    | continue, do not retry blindly                |
-| `` { ok: false, error: `Unknown tool: ${name}` } ``                                                | dispatched name has no case branch                  | bug — surfaces missing tool in dispatcher     |
-| `{ ok: false, error: <native message> }`                                                           | any other thrown error in any branch                | top-level `try/catch` returns this shape      |
+| Error                                                                                                                    | Returned when                                       | Caller should…                            |
+| ------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------- | ----------------------------------------- |
+| `{ ok: false, error: "navigate.url must be http(s)://" }`                                                                | non-http(s) URL passed to `navigate` or `fetch_url` | re-emit a corrected call                  |
+| `{ ok: false, error: "act.id must be a non-negative integer from the latest snapshot" }`                                 | `act.id` non-integer or negative                    | call `snapshot` again                     |
+| ``{ ok: false, error: `No element with id ${id}. The page may have changed; call snapshot() again.` }``                  | id not present in current DOM                       | call `snapshot` again                     |
+| `{ ok: false, error: "act.fill requires a `value` string" }`                                                             | `fill` / `select_option` missing `value`            | re-emit with `value`                      |
+| `{ ok: false, error: "act.press requires a `value` (key name)" }`                                                        | `press` missing `value`                             | re-emit with `value`                      |
+| ``{ ok: false, error: `Unknown action "${action}". Valid: click, fill, press, check, uncheck, hover, select_option.` }`` | `act.action` outside enum                           | re-emit with valid action                 |
+| ``{ ok: false, error: `fetch_url failed: <message>` }``                                                                  | `fetch_url` goto/evaluate throws                    | continue, do not retry blindly            |
+| ``{ ok: false, error: `Unknown tool: ${name}` }``                                                                        | dispatched name has no case branch                  | bug — surfaces missing tool in dispatcher |
+| `{ ok: false, error: <native message> }`                                                                                 | any other thrown error in any branch                | top-level `try/catch` returns this shape  |
 
 ## 3. Invariants
 
@@ -82,7 +82,7 @@ The shape is constrained by three things: (a) the OpenAI tool-call wire format e
 ## 4. How (briefly)
 
 - **Two halves.** `toolDefs` is a frozen `as const` array of OpenAI-shaped tool schemas — pure data, no behaviour. `executeTool` is a single-level `switch (name)` over those tool names with a top-level `try/catch` that funnels any throw into `{ ok: false, error }`.
-- **Element addressing.** `act` builds the locator as `page.locator(\`[data-tickle-id="${id}"]\`).first()`. The `data-tickle-id` attribute is set by `snapshot.ts` during the previous `snapshot()` call. If the page has reflowed (id no longer present) the count check returns the "page may have changed" error so the model knows to re-snapshot.
+- **Element addressing.** `act` builds the locator as `page.locator(\`[data-tickle-id="${id}"]\`).first()`. The `data-tickle-id`attribute is set by`snapshot.ts`during the previous`snapshot()` call. If the page has reflowed (id no longer present) the count check returns the "page may have changed" error so the model knows to re-snapshot.
 - **`read_text` filter (exact rules).** A DOM walker called via `page.evaluate`. An element is **excluded** (its subtree is skipped) if any of:
   1. `tagName ∈ {script, style, template, noscript, meta, link, head, title}` (case-insensitive)
   2. `aria-hidden="true"`
@@ -94,27 +94,28 @@ The shape is constrained by three things: (a) the OpenAI tool-call wire format e
   8. `getComputedStyle(el).color === getComputedStyle(el).backgroundColor` (camouflage)
 
   Block-level tags (`div, p, br, tr, li, section, article, h1–h6, header, footer, nav`) append a newline after their subtree. Output is post-processed: `[ \t]+\n → \n`, `\n{3,} → \n\n`, `.trim()`, then `.slice(0, 6000)`. Empty output renders as `"(empty)"`.
+
 - **`fetch_url` filter.** Similar walker but **looser**: it strips the eight tag names plus `aria-hidden`, `display:none`, `visibility:hidden`, and `opacity:0`. It does **not** apply the font-size, bounding-box, or colour-camouflage rules. ⚠️ Drift — both filters should share one implementation. See §6.
 - **Image attachment shape.** `ToolResult.image_base64` is raw base-64 with no `data:image/...;base64,` prefix; `agent.ts` constructs the data URL when assembling the OpenAI vision message.
 - **No state.** Module-level mutable state is zero. Every call is a function of `(session, name, args)`.
 
 ## 5. How tested
 
-| Spec section / claim                              | Test file | Test name | Status |
-|---------------------------------------------------|-----------|-----------|--------|
-| §3 I1 every result is `ToolResult`                | —         | —         | TODO(test) |
-| §3 I2 `navigate` rejects non-http(s)              | —         | —         | TODO(test) |
-| §3 I2 `fetch_url` rejects non-http(s)             | —         | —         | TODO(test) |
-| §3 I3 `act` selector form is `[data-tickle-id]`   | —         | —         | TODO(test) — static grep test |
-| §3 I4 `read_text` strips hidden / camouflage      | —         | —         | TODO(test) |
-| §3 I4 `read_text` ≤ 6000 chars and trims          | —         | —         | TODO(test) |
-| §3 I5 `fetch_url` does not navigate main page     | —         | —         | TODO(test) |
-| §3 I6 `toolDefs` exposes neither `finish` nor `finish_step` | `__tests__/tools.test.ts` | `does not include finish` / `does not include finish_step either` | done |
-| §3 I8 auto-snapshot lives in `agent.ts`           | —         | —         | TODO(test) — static grep |
-| §2 errors row "Unknown action"                    | —         | —         | TODO(test) |
-| §2 errors row "No element with id N"              | —         | —         | TODO(test) |
-| §4 `read_text` block-tag newline insertion        | —         | —         | TODO(test) |
-| §6 `select_option` matching mode (value vs label) | —         | —         | TODO(test) |
+| Spec section / claim                                        | Test file                 | Test name                                                         | Status                        |
+| ----------------------------------------------------------- | ------------------------- | ----------------------------------------------------------------- | ----------------------------- |
+| §3 I1 every result is `ToolResult`                          | —                         | —                                                                 | TODO(test)                    |
+| §3 I2 `navigate` rejects non-http(s)                        | —                         | —                                                                 | TODO(test)                    |
+| §3 I2 `fetch_url` rejects non-http(s)                       | —                         | —                                                                 | TODO(test)                    |
+| §3 I3 `act` selector form is `[data-tickle-id]`             | —                         | —                                                                 | TODO(test) — static grep test |
+| §3 I4 `read_text` strips hidden / camouflage                | —                         | —                                                                 | TODO(test)                    |
+| §3 I4 `read_text` ≤ 6000 chars and trims                    | —                         | —                                                                 | TODO(test)                    |
+| §3 I5 `fetch_url` does not navigate main page               | —                         | —                                                                 | TODO(test)                    |
+| §3 I6 `toolDefs` exposes neither `finish` nor `finish_step` | `__tests__/tools.test.ts` | `does not include finish` / `does not include finish_step either` | done                          |
+| §3 I8 auto-snapshot lives in `agent.ts`                     | —                         | —                                                                 | TODO(test) — static grep      |
+| §2 errors row "Unknown action"                              | —                         | —                                                                 | TODO(test)                    |
+| §2 errors row "No element with id N"                        | —                         | —                                                                 | TODO(test)                    |
+| §4 `read_text` block-tag newline insertion                  | —                         | —                                                                 | TODO(test)                    |
+| §6 `select_option` matching mode (value vs label)           | —                         | —                                                                 | TODO(test)                    |
 
 ### Deliberately not tested
 
@@ -126,17 +127,17 @@ The shape is constrained by three things: (a) the OpenAI tool-call wire format e
 
 ### Hard guardrails (do not violate)
 
-- **🚫 Do not add tools that filter site policy text.** Anti-AI banners, "do not use AI" disclaimers, robots.txt-style admonishments are *legitimate platform terms* and must remain visible to the model. The `read_text` injection-defence filter exists for **invisible attack vectors only** — display:none, opacity:0, font-size:0, colour-camouflage, off-screen text — not for muting visible page text. Any new strip rule must justify itself against this distinction. (CLAUDE.md "Things to avoid".)
+- **🚫 Do not add tools that filter site policy text.** Anti-AI banners, "do not use AI" disclaimers, robots.txt-style admonishments are _legitimate platform terms_ and must remain visible to the model. The `read_text` injection-defence filter exists for **invisible attack vectors only** — display:none, opacity:0, font-size:0, colour-camouflage, off-screen text — not for muting visible page text. Any new strip rule must justify itself against this distinction. (CLAUDE.md "Things to avoid".)
 - **🚫 No jQuery `:contains()` selectors anywhere in tool args.** Playwright rejects them. The model uses ids; if `wait_for`'s `selector` arg ever needs text matching, route through `getByText` / `getByRole` in a new tool, do not paper over it. (CLAUDE.md "Things to avoid".)
 - **🚫 Do not bypass the `Session` abstraction.** Tools must not import `chromium` or open their own contexts; they go through `session.page` / `session.page.context()` only. The persistent profile lives in `server/data/profile/` and is owned by `browser.ts`.
 - **🚫 Do not move sensitive data through tool args that end up in URL parameters.** `navigate.url` and `fetch_url.url` are logged (steps table, JSONL trace); never construct URLs that embed secrets.
-- **🚫 Cancellation is enforced *outside* this module.** `executeTool` does not check `cancel.ts`; `agent.ts` checks before each tool dispatch and between LLM retries. Do not add ad-hoc cancellation polling inside tool branches — it would duplicate the seam and leak the cancel registry into infrastructure code. (CLAUDE.md "Conventions": "Cancellation is checked at every safe boundary".)
+- **🚫 Cancellation is enforced _outside_ this module.** `executeTool` does not check `cancel.ts`; `agent.ts` checks before each tool dispatch and between LLM retries. Do not add ad-hoc cancellation polling inside tool branches — it would duplicate the seam and leak the cancel registry into infrastructure code. (CLAUDE.md "Conventions": "Cancellation is checked at every safe boundary".)
 
 ### Drift
 
 - **Resolved — `finish` removed from `toolDefs`.** The model now only sees `finish_step` (appended by `agent.ts::toolsForAiBlock`). The duplicate `finish` exposed an un-intercepted exit path that ran the loop to step-limit. Regression: `__tests__/tools.test.ts`.
 - **⚠️ `read_text` and `fetch_url` text walkers diverge.** `fetch_url`'s walker omits the font-size, bounding-box, and colour-camouflage checks. A page reachable via `fetch_url` is no less hostile than one reached via `navigate` — the same filter must apply. Refactor target: extract `extractVisibleText(root)` into a shared `infrastructure/browser/extractText.ts` and have both branches call it.
-- **⚠️ `select_option` matching mode is documented as "option text or value" but Playwright actually matches `value` attribute, label, *or* `<option>` text content, in priority order.** Either narrow Playwright's call (e.g. `selectOption({ label: value })` to force label-only) or update the schema description to match real behaviour. Until then, models will get inconsistent results across multi-language sites where `value` and visible text differ.
+- **⚠️ `select_option` matching mode is documented as "option text or value" but Playwright actually matches `value` attribute, label, _or_ `<option>` text content, in priority order.** Either narrow Playwright's call (e.g. `selectOption({ label: value })` to force label-only) or update the schema description to match real behaviour. Until then, models will get inconsistent results across multi-language sites where `value` and visible text differ.
 - **⚠️ `read_text` slice-then-trim ordering.** Output is post-processed (`replace`, `replace`, `trim`) then `.slice(0, 6000)`. A page with 6001 chars of meaningful text followed by trailing whitespace would have its tail truncated mid-word silently. Acceptable for an LLM consumer but worth flagging.
 - **⚠️ Layer placement.** Per `_LAYERS.md`, `tools.ts` belongs in `application/` post-refactor — it orchestrates `infrastructure/` (`browser.ts`, `snapshot.ts`) on behalf of the agent. The right split is:
   - `domain/tools.ts` — `toolDefs` (pure data) and the `ToolResult` type. Zero imports from infrastructure.

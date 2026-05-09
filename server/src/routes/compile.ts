@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { newLlmClient, chatOnce, MODEL } from "../llm.ts";
 import { type Block, type BlockKind } from "../blocks.ts";
 import { trace } from "../log.ts";
+import { asString } from "../coerce.ts";
 
 const COMPILE_SYSTEM = `You are a compiler that turns a user's natural-language task description into a JSON array of typed automation blocks. Output ONLY a JSON object of the form {"blocks": [...]} — no prose, no commentary, no markdown.
 
@@ -45,23 +46,34 @@ type RawBlock = Record<string, unknown> & { kind?: string };
 
 function sanitiseBlock(raw: RawBlock): Block | null {
   if (!raw || typeof raw !== "object") return null;
-  const kind = String(raw.kind ?? "").toLowerCase().trim() as BlockKind;
+  const kind = String(raw.kind ?? "")
+    .toLowerCase()
+    .trim() as BlockKind;
   if (!VALID_KINDS.includes(kind)) return null;
   const id = randomUUID();
 
   switch (kind) {
     case "navigate":
-      return { id, kind, url: String(raw.url ?? "").trim() };
+      return { id, kind, url: asString(raw.url).trim() };
     case "click": {
       const VALID_ROLES = new Set([
-        "any", "button", "link", "tab", "menuitem",
-        "checkbox", "radio", "switch", "combobox", "option", "textbox",
+        "any",
+        "button",
+        "link",
+        "tab",
+        "menuitem",
+        "checkbox",
+        "radio",
+        "switch",
+        "combobox",
+        "option",
+        "textbox",
       ]);
       const role = typeof raw.role === "string" && VALID_ROLES.has(raw.role) ? raw.role : "any";
       return {
         id,
         kind,
-        target: String(raw.target ?? "").trim(),
+        target: asString(raw.target).trim(),
         role: role as "any",
       };
     }
@@ -69,23 +81,26 @@ function sanitiseBlock(raw: RawBlock): Block | null {
       return {
         id,
         kind,
-        target: String(raw.target ?? "").trim(),
-        value: String(raw.value ?? "").trim(),
+        target: asString(raw.target).trim(),
+        value: asString(raw.value).trim(),
       };
     case "extract":
       return {
         id,
         kind,
-        target: String(raw.target ?? "").trim(),
-        var_name: String(raw.var_name ?? "").replace(/[^a-zA-Z0-9_]/g, "").trim() || "result",
+        target: asString(raw.target).trim(),
+        var_name:
+          asString(raw.var_name)
+            .replace(/[^a-zA-Z0-9_]/g, "")
+            .trim() || "result",
       };
     case "goal":
-      return { id, kind, description: String(raw.description ?? raw.goal ?? "").trim() };
+      return { id, kind, description: asString(raw.description ?? raw.goal).trim() };
     case "verify":
       return {
         id,
         kind,
-        condition: String(raw.condition ?? "").trim(),
+        condition: asString(raw.condition).trim(),
         on_fail: raw.on_fail === "pause" ? "pause" : "halt",
       };
     case "questionnaire":
@@ -99,7 +114,7 @@ function sanitiseBlock(raw: RawBlock): Block | null {
             : "unanswered",
       };
     case "pause":
-      return { id, kind, message: String(raw.message ?? "").trim() };
+      return { id, kind, message: asString(raw.message).trim() };
     case "for_each": {
       const body = Array.isArray(raw.body)
         ? (raw.body as RawBlock[]).map(sanitiseBlock).filter((b): b is Block => b !== null)
@@ -107,7 +122,7 @@ function sanitiseBlock(raw: RawBlock): Block | null {
       return {
         id,
         kind,
-        items: String(raw.items ?? "").trim(),
+        items: asString(raw.items).trim(),
         item_var: typeof raw.item_var === "string" && raw.item_var.trim() ? raw.item_var : "item",
         body,
       };
@@ -144,7 +159,7 @@ export async function compileRoutes(app: FastifyInstance) {
     let parsed: unknown;
     try {
       parsed = JSON.parse(content);
-    } catch (err) {
+    } catch {
       trace("compile.parse_error", { content_preview: content.slice(0, 200) });
       return reply.code(502).send({
         error: "Model output was not valid JSON",
@@ -154,7 +169,7 @@ export async function compileRoutes(app: FastifyInstance) {
 
     let rawBlocks: unknown = parsed;
     if (parsed && typeof parsed === "object" && "blocks" in parsed) {
-      rawBlocks = (parsed as { blocks: unknown }).blocks;
+      rawBlocks = (parsed).blocks;
     }
     if (!Array.isArray(rawBlocks)) {
       return reply.code(502).send({

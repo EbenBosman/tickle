@@ -14,11 +14,11 @@ The agent picks targets to click, fill, hover, etc. using small integer IDs, not
 
 ### Exports
 
-| Symbol             | Kind     | Signature / shape                                                       | Stability |
-|--------------------|----------|-------------------------------------------------------------------------|-----------|
-| `takeSnapshot`     | function | `(session, opts?: { query?: string; max?: number; all?: boolean }) => Promise<Snapshot>` | stable |
-| `Snapshot`         | type     | `{ elements: SnapshotElement[]; hidden_below_fold: number; text: string; base64: string; url: string; title: string }` | stable |
-| `SnapshotElement`  | type     | `{ id: number; role: string; name: string; state?: string; href?: string; value?: string }` | stable |
+| Symbol            | Kind     | Signature / shape                                                                                                      | Stability |
+| ----------------- | -------- | ---------------------------------------------------------------------------------------------------------------------- | --------- |
+| `takeSnapshot`    | function | `(session, opts?: { query?: string; max?: number; all?: boolean }) => Promise<Snapshot>`                               | stable    |
+| `Snapshot`        | type     | `{ elements: SnapshotElement[]; hidden_below_fold: number; text: string; base64: string; url: string; title: string }` | stable    |
+| `SnapshotElement` | type     | `{ id: number; role: string; name: string; state?: string; href?: string; value?: string }`                            | stable    |
 
 ### Inputs
 
@@ -36,12 +36,12 @@ The agent picks targets to click, fill, hover, etc. using small integer IDs, not
 
 ### Errors
 
-| Error / failure mode                          | Returned when                                | Caller should…                                  |
-|-----------------------------------------------|----------------------------------------------|-------------------------------------------------|
-| `page.evaluate` rejection                     | tab navigated/closed mid-snapshot, or Playwright dispatch error | propagates as a thrown error; caller (`agent.ts`) catches and emits a tool error |
-| `session.screenshot()` rejection              | browser context lost                         | propagates                                      |
-| `page.title()` rejection                      | tab in a state where `title()` throws        | swallowed; `title` is `""`                      |
-| (no error)                                    | zero elements match                          | `elements: []`, headline says `(no visible interactive elements)` or `(no visible elements match "<query>")` |
+| Error / failure mode             | Returned when                                                   | Caller should…                                                                                               |
+| -------------------------------- | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `page.evaluate` rejection        | tab navigated/closed mid-snapshot, or Playwright dispatch error | propagates as a thrown error; caller (`agent.ts`) catches and emits a tool error                             |
+| `session.screenshot()` rejection | browser context lost                                            | propagates                                                                                                   |
+| `page.title()` rejection         | tab in a state where `title()` throws                           | swallowed; `title` is `""`                                                                                   |
+| (no error)                       | zero elements match                                             | `elements: []`, headline says `(no visible interactive elements)` or `(no visible elements match "<query>")` |
 
 ## 3. Invariants
 
@@ -52,7 +52,7 @@ The agent picks targets to click, fill, hover, etc. using small integer IDs, not
 - **I5 — Nameless elements are skipped except for input-likes.** Elements whose accessible name resolves to `""` are dropped, **unless** the role is `textbox`, `combobox`, or `searchbox` (where an empty name is legitimate — the model still needs to fill them).
 - **I6 — Accessible name precedence.** `aria-label` > `aria-labelledby` (joined `textContent` of referenced ids) > `<label for="">` > wrapping `<label>` > inner `<img alt="">` > visible text (`innerText`/`textContent`, whitespace-collapsed) > `(placeholder: …)` > `(value: …)` (truncated to 60 chars) > `title`. Final name is truncated to 240 chars.
 - **I7 — Viewport heuristic.** When `!opts.all && !opts.query` and the count of qualifying elements exceeds `VIEWPORT_FILTER_THRESHOLD = 50`, only elements intersecting the viewport rectangle are returned; the rest are counted in `hidden_below_fold` and surfaced in the `text` footer with a hint to scroll or pass `query`. At or below 50, all qualifying elements are returned.
-- **I8 — `max` is a hard cap, applied after viewport filtering.** If more than `max` candidates remain, the trailing ones are silently dropped (they are *not* counted in `hidden_below_fold`).
+- **I8 — `max` is a hard cap, applied after viewport filtering.** If more than `max` candidates remain, the trailing ones are silently dropped (they are _not_ counted in `hidden_below_fold`).
 - **I9 — Single-pass tagging is destructive but idempotent.** Each call sets `data-tickle-id` on returned elements; it does **not** clear stale `data-tickle-id` attributes from previous snapshots on elements that are no longer returned. Stale attributes from earlier snapshots persist until the page navigates or the element is removed. The `act` tool in `tools.ts` looks elements up via `[data-tickle-id="<id>"]` and trusts that the most recent snapshot's IDs are the live ones.
 
 ## 4. How (briefly)
@@ -66,18 +66,18 @@ The agent picks targets to click, fill, hover, etc. using small integer IDs, not
 
 ## 5. How tested
 
-| Spec section / claim                       | Test file | Test name | Status |
-|-------------------------------------------|-----------|-----------|--------|
-| §3 I1 IDs dense, zero-based               | —         | —         | TODO(test) |
-| §3 I3 visibility filter (display/visibility/opacity/zero-rect/ancestor-hidden) | — | — | TODO(test) |
-| §3 I4 role inference table                | —         | —         | TODO(test) |
-| §3 I5 nameless skip except input-likes    | —         | —         | TODO(test) |
-| §3 I6 accessible-name precedence ladder   | —         | —         | TODO(test) |
-| §3 I7 viewport heuristic at threshold boundary (50, 51) | — | — | TODO(test) |
-| §3 I8 `max` cap behaviour                 | —         | —         | TODO(test) |
-| §3 I9 stale `data-tickle-id` not cleared between snapshots | — | — | TODO(test) |
-| §2 `query` substring + disables viewport filter | — | —    | TODO(test) |
-| §2 `text` rendering format and footer hint | —        | —         | TODO(test) |
+| Spec section / claim                                                           | Test file | Test name | Status     |
+| ------------------------------------------------------------------------------ | --------- | --------- | ---------- |
+| §3 I1 IDs dense, zero-based                                                    | —         | —         | TODO(test) |
+| §3 I3 visibility filter (display/visibility/opacity/zero-rect/ancestor-hidden) | —         | —         | TODO(test) |
+| §3 I4 role inference table                                                     | —         | —         | TODO(test) |
+| §3 I5 nameless skip except input-likes                                         | —         | —         | TODO(test) |
+| §3 I6 accessible-name precedence ladder                                        | —         | —         | TODO(test) |
+| §3 I7 viewport heuristic at threshold boundary (50, 51)                        | —         | —         | TODO(test) |
+| §3 I8 `max` cap behaviour                                                      | —         | —         | TODO(test) |
+| §3 I9 stale `data-tickle-id` not cleared between snapshots                     | —         | —         | TODO(test) |
+| §2 `query` substring + disables viewport filter                                | —         | —         | TODO(test) |
+| §2 `text` rendering format and footer hint                                     | —         | —         | TODO(test) |
 
 ### Deliberately not tested
 

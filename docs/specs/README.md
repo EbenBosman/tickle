@@ -15,42 +15,42 @@ This directory is the **source of truth** for what tickle's modules do, why, and
 
 ### Server
 
-| Module | Spec | Status |
-|--------|------|--------|
-| Run lifecycle (top-level orchestration, today: `agent.ts`) | [`server/agent.md`](./server/agent.md) | 📝 |
-| Block model (`blocks.ts`, `$var` substitution, walkers) | [`server/blocks.md`](./server/blocks.md) | 📝 |
-| Snapshot pipeline (`snapshot.ts`) | [`server/snapshot.md`](./server/snapshot.md) | 📝 |
-| Form scan (`formScan.ts`) | [`server/form-scan.md`](./server/form-scan.md) | 📝 |
-| Tools (`tools.ts`, the model-facing tool surface) | [`server/tools.md`](./server/tools.md) | 📝 |
-| Browser adapter (`browser.ts`, persistent profile, `__name` polyfill) | [`server/browser.md`](./server/browser.md) | 📝 |
-| LLM client (`llm.ts`, OpenAI-compatible, retry, thinking-mode toggle) | [`server/llm-client.md`](./server/llm-client.md) | 📝 |
-| Persistence (`db.ts`, schema, lazy migrations) | [`server/persistence.md`](./server/persistence.md) | 📝 |
-| Login auto-pause (`loginDetect.ts`) | [`server/login-guard.md`](./server/login-guard.md) | 📝 |
-| Stall auto-pause (lives in `agent.ts::runAiSubGoal`) | covered in [`server/agent.md`](./server/agent.md) §3 invariants | 📝 |
-| Pause registry (`pause.ts`) | [`server/run-control-pause.md`](./server/run-control-pause.md) | 📝 |
-| Cancel registry (`cancel.ts`) | [`server/run-control-cancel.md`](./server/run-control-cancel.md) | 📝 |
-| Event bus (`bus.ts`) | [`server/event-bus.md`](./server/event-bus.md) | 📝 |
-| Env bootstrap (`loadEnv.ts`) | [`server/load-env.md`](./server/load-env.md) | 📝 |
-| JSONL trace logger (`log.ts`) | [`server/observability-log.md`](./server/observability-log.md) | 📝 |
-| HTTP routes — runs (`routes/runs.ts`) | [`server/http-runs.md`](./server/http-runs.md) | 📝 |
-| HTTP routes — tasks (`routes/tasks.ts`) | [`server/http-tasks.md`](./server/http-tasks.md) | 📝 |
-| HTTP routes — compile (`routes/compile.ts`) | [`server/http-compile.md`](./server/http-compile.md) | 📝 |
-| HTTP routes — export (`routes/export.ts`) | [`server/http-export.md`](./server/http-export.md) | 📝 |
-| HTTP routes — settings (`routes/settings.ts`) | [`server/http-settings.md`](./server/http-settings.md) | 📝 |
+| Module                                                                | Spec                                                             | Status |
+| --------------------------------------------------------------------- | ---------------------------------------------------------------- | ------ |
+| Run lifecycle (top-level orchestration, today: `agent.ts`)            | [`server/agent.md`](./server/agent.md)                           | 📝     |
+| Block model (`blocks.ts`, `$var` substitution, walkers)               | [`server/blocks.md`](./server/blocks.md)                         | 📝     |
+| Snapshot pipeline (`snapshot.ts`)                                     | [`server/snapshot.md`](./server/snapshot.md)                     | 📝     |
+| Form scan (`formScan.ts`)                                             | [`server/form-scan.md`](./server/form-scan.md)                   | 📝     |
+| Tools (`tools.ts`, the model-facing tool surface)                     | [`server/tools.md`](./server/tools.md)                           | 📝     |
+| Browser adapter (`browser.ts`, persistent profile, `__name` polyfill) | [`server/browser.md`](./server/browser.md)                       | 📝     |
+| LLM client (`llm.ts`, OpenAI-compatible, retry, thinking-mode toggle) | [`server/llm-client.md`](./server/llm-client.md)                 | 📝     |
+| Persistence (`db.ts`, schema, lazy migrations)                        | [`server/persistence.md`](./server/persistence.md)               | 📝     |
+| Login auto-pause (`loginDetect.ts`)                                   | [`server/login-guard.md`](./server/login-guard.md)               | 📝     |
+| Stall auto-pause (lives in `agent.ts::runAiSubGoal`)                  | covered in [`server/agent.md`](./server/agent.md) §3 invariants  | 📝     |
+| Pause registry (`pause.ts`)                                           | [`server/run-control-pause.md`](./server/run-control-pause.md)   | 📝     |
+| Cancel registry (`cancel.ts`)                                         | [`server/run-control-cancel.md`](./server/run-control-cancel.md) | 📝     |
+| Event bus (`bus.ts`)                                                  | [`server/event-bus.md`](./server/event-bus.md)                   | 📝     |
+| Env bootstrap (`loadEnv.ts`)                                          | [`server/load-env.md`](./server/load-env.md)                     | 📝     |
+| JSONL trace logger (`log.ts`)                                         | [`server/observability-log.md`](./server/observability-log.md)   | 📝     |
+| HTTP routes — runs (`routes/runs.ts`)                                 | [`server/http-runs.md`](./server/http-runs.md)                   | 📝     |
+| HTTP routes — tasks (`routes/tasks.ts`)                               | [`server/http-tasks.md`](./server/http-tasks.md)                 | 📝     |
+| HTTP routes — compile (`routes/compile.ts`)                           | [`server/http-compile.md`](./server/http-compile.md)             | 📝     |
+| HTTP routes — export (`routes/export.ts`)                             | [`server/http-export.md`](./server/http-export.md)               | 📝     |
+| HTTP routes — settings (`routes/settings.ts`)                         | [`server/http-settings.md`](./server/http-settings.md)           | 📝     |
 
 ### Web
 
-| Module | Spec | Status |
-|--------|------|--------|
-| App shell (`App.tsx`, routing, top-level layout) | [`web/app-shell.md`](./web/app-shell.md) | 📝 |
-| Run view (SSE consumer, timer, banners, entry stream) | [`web/run-view.md`](./web/run-view.md) | 📝 |
-| Block list editor (drag-drop, per-kind UI) | [`web/block-list.md`](./web/block-list.md) | 📝 |
-| Task editor wrapper | [`web/task-editor.md`](./web/task-editor.md) | 📝 |
-| Settings page | [`web/settings.md`](./web/settings.md) | 📝 |
-| Compile-from-text | [`web/compile.md`](./web/compile.md) | 📝 |
-| API client (`api.ts`) | [`web/api-client.md`](./web/api-client.md) | 📝 |
-| Block model + UI metadata (`blocks.ts`) | [`web/blocks.md`](./web/blocks.md) | 📝 |
-| Status pill + small primitives + bootstrap | [`web/ui-primitives.md`](./web/ui-primitives.md) | 📝 |
+| Module                                                | Spec                                             | Status |
+| ----------------------------------------------------- | ------------------------------------------------ | ------ |
+| App shell (`App.tsx`, routing, top-level layout)      | [`web/app-shell.md`](./web/app-shell.md)         | 📝     |
+| Run view (SSE consumer, timer, banners, entry stream) | [`web/run-view.md`](./web/run-view.md)           | 📝     |
+| Block list editor (drag-drop, per-kind UI)            | [`web/block-list.md`](./web/block-list.md)       | 📝     |
+| Task editor wrapper                                   | [`web/task-editor.md`](./web/task-editor.md)     | 📝     |
+| Settings page                                         | [`web/settings.md`](./web/settings.md)           | 📝     |
+| Compile-from-text                                     | [`web/compile.md`](./web/compile.md)             | 📝     |
+| API client (`api.ts`)                                 | [`web/api-client.md`](./web/api-client.md)       | 📝     |
+| Block model + UI metadata (`blocks.ts`)               | [`web/blocks.md`](./web/blocks.md)               | 📝     |
+| Status pill + small primitives + bootstrap            | [`web/ui-primitives.md`](./web/ui-primitives.md) | 📝     |
 
 ## Authoring a spec
 

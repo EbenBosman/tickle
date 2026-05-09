@@ -6,10 +6,11 @@
 
 A user pressing **Stop** in the UI must terminate an in-flight run promptly, even when the agent is mid-LLM-call (which can be tens of seconds for a local model under load) or parked on an `awaitIfPaused`. The cancel registry is the cooperative bridge between the HTTP route — which knows `runId` but nothing about the running agent's internals — and the agent's per-run state (its `AbortController`, its pause registration, its `cancelled` boolean). The route calls `requestCancel(id)`; the agent's pre-registered callback fires synchronously, aborts the in-flight LLM request, wakes any paused awaiter, and flips the cooperative `cancelled` flag the executor checks at every safe boundary.
 
-The shape — a per-run `Map<number, () => void>` of opaque cancel callbacks — is dictated by three constraints: (a) the route must not need any knowledge of the agent's internal controller; (b) the cancel callback must be cheap to invoke synchronously from a Fastify handler; (c) the agent owns the *meaning* of cancellation (which controller to abort, which pause to resume, which flag to set) — the registry is just dispatch.
+The shape — a per-run `Map<number, () => void>` of opaque cancel callbacks — is dictated by three constraints: (a) the route must not need any knowledge of the agent's internal controller; (b) the cancel callback must be cheap to invoke synchronously from a Fastify handler; (c) the agent owns the _meaning_ of cancellation (which controller to abort, which pause to resume, which flag to set) — the registry is just dispatch.
 
 > **Non-obvious why:**
-> - **Cancel does NOT close the browser context.** The persistent Chromium profile at `server/data/profile/` must survive across runs (cookies, localStorage, passkeys). The cancel callback aborts the LLM call and lets the executor unwind cleanly to its `finally`, which closes the *tab* via `session.close()` but not the shared context.
+>
+> - **Cancel does NOT close the browser context.** The persistent Chromium profile at `server/data/profile/` must survive across runs (cookies, localStorage, passkeys). The cancel callback aborts the LLM call and lets the executor unwind cleanly to its `finally`, which closes the _tab_ via `session.close()` but not the shared context.
 > - **Cancel cooperates with — and short-circuits — pause.** A paused run is sitting on a `Promise` from `awaitIfPaused`. The cancel callback calls `resumePause(runId)` so the awaiter wakes; the executor then observes `isCancelled() === true` on its next safe-boundary check and exits. Without this wake-up, cancelling a paused run would hang forever.
 > - **Two ways to abort the LLM.** `chatWithRetry` constructs a fresh `AbortController` per attempt and registers it via `setActiveController`; the cancel callback reads that handle through a closure and calls `.abort()`. This interrupts the underlying `fetch` so the OpenAI/Anthropic SDK promise rejects with `aborted by`, which `chatWithRetry` recognises as terminal (not a transient retry).
 > - **Rescue mode hijacks cancel.** When `rescue_on_cancel` is enabled and an Anthropic key is present, the cancel callback flips `rescueRequested` instead of `cancelled` — same plumbing (abort the local LLM, wake the pause), different terminal action (retry the step against Claude). This is implemented in `agent.ts`, not here; the registry is agnostic to what the callback does.
@@ -19,12 +20,12 @@ The shape — a per-run `Map<number, () => void>` of opaque cancel callbacks —
 
 ### Exports
 
-| Symbol | Kind | Signature | Stability |
-|---|---|---|---|
-| `registerCancel` | function | `(runId: number, fn: () => void) => void` | stable |
-| `requestCancel` | function | `(runId: number) => boolean` | stable |
-| `clearCancel` | function | `(runId: number) => void` | stable |
-| `CancelFn` | — | (intentionally not exported) | — |
+| Symbol           | Kind     | Signature                                 | Stability |
+| ---------------- | -------- | ----------------------------------------- | --------- |
+| `registerCancel` | function | `(runId: number, fn: () => void) => void` | stable    |
+| `requestCancel`  | function | `(runId: number) => boolean`              | stable    |
+| `clearCancel`    | function | `(runId: number) => void`                 | stable    |
+| `CancelFn`       | —        | (intentionally not exported)              | —         |
 
 ### Return-value semantics
 
@@ -77,22 +78,22 @@ This module never throws. Exceptions raised by the registered callback propagate
 
 There are no tests for this module yet. Every behavioural claim below is `TODO(test)`.
 
-| Spec section / claim | Test file | Test name | Status |
-|---|---|---|---|
-| §2 `requestCancel` returns `true` after register, invokes callback | — | `requestCancel: invokes registered callback and returns true` | TODO(test) |
-| §2 `requestCancel` returns `false` for unknown run id | — | `requestCancel: unknown run id returns false` | TODO(test) |
-| §2 `requestCancel` returns `false` after `clearCancel` | — | `requestCancel: false after clearCancel` | TODO(test) |
-| §2 `clearCancel` does NOT invoke the callback | — | `clearCancel: does not call the callback` | TODO(test) |
-| §2 `clearCancel` is a no-op for unknown run id | — | `clearCancel: unknown run id is a no-op` | TODO(test) |
-| §2 dispatch is synchronous (callback runs before `requestCancel` returns) | — | `requestCancel: dispatches synchronously` | TODO(test) |
-| §3 per-run isolation: cancelling A does not invoke B's callback | — | `requestCancel: keyed per run id` | TODO(test) |
-| §3 last-writer-wins: second `registerCancel` replaces first without invoking it | — | `registerCancel: replaces prior without invoking` | TODO(test) |
-| §3 `requestCancel` twice fires callback twice | — | `requestCancel: not deduplicated within a registration` | TODO(test) |
-| §3 no lazy registration: `requestCancel` does not create an entry | — | `requestCancel: does not register on unknown id` | TODO(test) |
-| §1 integration: cancel aborts an in-flight `chatOnce` AbortController | — | `cancel: aborts active LLM controller` | TODO(test) |
-| §1 integration: cancel wakes a paused awaiter (paired with `pause.ts`) | — | `cancel: resumes paused awaiter so isCancelled is observed` | TODO(test) |
-| §1 integration: rescue-on-cancel flips `rescueRequested` instead of `cancelled` | — | `cancel: rescue mode does not set cancelled flag` | TODO(test) |
-| §1 integration: persistent browser context survives cancel (only the tab closes) | — | `cancel: profile survives, tab closes` | TODO(test) |
+| Spec section / claim                                                             | Test file | Test name                                                     | Status     |
+| -------------------------------------------------------------------------------- | --------- | ------------------------------------------------------------- | ---------- |
+| §2 `requestCancel` returns `true` after register, invokes callback               | —         | `requestCancel: invokes registered callback and returns true` | TODO(test) |
+| §2 `requestCancel` returns `false` for unknown run id                            | —         | `requestCancel: unknown run id returns false`                 | TODO(test) |
+| §2 `requestCancel` returns `false` after `clearCancel`                           | —         | `requestCancel: false after clearCancel`                      | TODO(test) |
+| §2 `clearCancel` does NOT invoke the callback                                    | —         | `clearCancel: does not call the callback`                     | TODO(test) |
+| §2 `clearCancel` is a no-op for unknown run id                                   | —         | `clearCancel: unknown run id is a no-op`                      | TODO(test) |
+| §2 dispatch is synchronous (callback runs before `requestCancel` returns)        | —         | `requestCancel: dispatches synchronously`                     | TODO(test) |
+| §3 per-run isolation: cancelling A does not invoke B's callback                  | —         | `requestCancel: keyed per run id`                             | TODO(test) |
+| §3 last-writer-wins: second `registerCancel` replaces first without invoking it  | —         | `registerCancel: replaces prior without invoking`             | TODO(test) |
+| §3 `requestCancel` twice fires callback twice                                    | —         | `requestCancel: not deduplicated within a registration`       | TODO(test) |
+| §3 no lazy registration: `requestCancel` does not create an entry                | —         | `requestCancel: does not register on unknown id`              | TODO(test) |
+| §1 integration: cancel aborts an in-flight `chatOnce` AbortController            | —         | `cancel: aborts active LLM controller`                        | TODO(test) |
+| §1 integration: cancel wakes a paused awaiter (paired with `pause.ts`)           | —         | `cancel: resumes paused awaiter so isCancelled is observed`   | TODO(test) |
+| §1 integration: rescue-on-cancel flips `rescueRequested` instead of `cancelled`  | —         | `cancel: rescue mode does not set cancelled flag`             | TODO(test) |
+| §1 integration: persistent browser context survives cancel (only the tab closes) | —         | `cancel: profile survives, tab closes`                        | TODO(test) |
 
 ### Deliberately not tested (here)
 

@@ -4,7 +4,7 @@
 
 ## 1. Why
 
-Runs are long, multi-step, partly LLM-driven, and reproducibility is poor — when something goes wrong (a tool returns garbage, the model loops, a click misses, a login screen appears mid-flow) the operator needs an after-the-fact record of *what the agent saw, what it asked the model, and what the model replied*, structured enough to grep and slice. The persisted `steps` SQLite rows are the user-facing replay surface; this trace log is the lower-level operator surface — finer-grained (LLM retries, login-detect errors, snapshot failures) and append-only across server restarts. JSONL was chosen over a structured log library because it's **dependency-free**, **line-grep-able with stock OS tools** (`tail -f`, `Get-Content -Wait`, `jq`), and **tail-friendly during dev** without needing a sink process. Single-file rotation at 5 MB keeps `tail`/`Get-Content -Wait` snappy and bounds disk footprint to ~10 MB total.
+Runs are long, multi-step, partly LLM-driven, and reproducibility is poor — when something goes wrong (a tool returns garbage, the model loops, a click misses, a login screen appears mid-flow) the operator needs an after-the-fact record of _what the agent saw, what it asked the model, and what the model replied_, structured enough to grep and slice. The persisted `steps` SQLite rows are the user-facing replay surface; this trace log is the lower-level operator surface — finer-grained (LLM retries, login-detect errors, snapshot failures) and append-only across server restarts. JSONL was chosen over a structured log library because it's **dependency-free**, **line-grep-able with stock OS tools** (`tail -f`, `Get-Content -Wait`, `jq`), and **tail-friendly during dev** without needing a sink process. Single-file rotation at 5 MB keeps `tail`/`Get-Content -Wait` snappy and bounds disk footprint to ~10 MB total.
 
 > **Non-obvious why — small rotation threshold.** 5 MB is deliberately small. The dev workflow is "tail the file in another terminal while a run executes"; large logs make tools sluggish and `Get-Content -Wait` more sensitive to truncation races. A single `.log.1` backup keeps disk usage bounded (~10 MB worst-case) without trying to be a long-term archive — operators export interesting runs by copying lines out, not by retaining history in this file.
 >
@@ -14,12 +14,12 @@ Runs are long, multi-step, partly LLM-driven, and reproducibility is poor — wh
 
 ### Exports
 
-| Symbol         | Kind     | Signature / shape                                              | Stability |
-|----------------|----------|----------------------------------------------------------------|-----------|
-| `trace`        | function | `(event: string, ctx?: LogContext) => void` — fire-and-forget  | stable    |
-| `LogContext`   | type     | `{ runId?: number; [key: string]: unknown }`                   | stable    |
-| `LOG_FILE`     | const    | `string` — absolute-or-relative path to the active log file    | stable    |
-| `rotateIfNeeded` | —      | (intentionally not exported; internal)                         | —         |
+| Symbol           | Kind     | Signature / shape                                             | Stability |
+| ---------------- | -------- | ------------------------------------------------------------- | --------- |
+| `trace`          | function | `(event: string, ctx?: LogContext) => void` — fire-and-forget | stable    |
+| `LogContext`     | type     | `{ runId?: number; [key: string]: unknown }`                  | stable    |
+| `LOG_FILE`       | const    | `string` — absolute-or-relative path to the active log file   | stable    |
+| `rotateIfNeeded` | —        | (intentionally not exported; internal)                        | —         |
 
 ### Output format
 
@@ -51,11 +51,11 @@ The `runId` field is conventionally present on every per-run event but is **not 
 
 ### Errors
 
-| Error            | Returned when                                       | Caller should…                                  |
-|------------------|-----------------------------------------------------|-------------------------------------------------|
-| (none thrown)    | log file is locked / disk full / permission denied  | nothing — `trace` swallows the error so a logging failure can never crash the agent |
-| (none thrown)    | rotation `statSync` / `renameSync` throws           | nothing — outer `try/catch` in `rotateIfNeeded` swallows; next call may try again |
-| (none thrown)    | `ctx` contains a circular reference                 | the eventual `JSON.stringify` would throw — currently uncaught in the file write path; see §6 |
+| Error         | Returned when                                      | Caller should…                                                                                |
+| ------------- | -------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| (none thrown) | log file is locked / disk full / permission denied | nothing — `trace` swallows the error so a logging failure can never crash the agent           |
+| (none thrown) | rotation `statSync` / `renameSync` throws          | nothing — outer `try/catch` in `rotateIfNeeded` swallows; next call may try again             |
+| (none thrown) | `ctx` contains a circular reference                | the eventual `JSON.stringify` would throw — currently uncaught in the file write path; see §6 |
 
 ## 3. Invariants
 
@@ -64,8 +64,8 @@ The `runId` field is conventionally present on every per-run event but is **not 
 - **I3 — `t` and `event` are always present.** Every line has a string `t` parseable as ISO-8601 and a non-empty string `event`. Falsifiable: `trace("x")` with no ctx still produces a line with both fields.
 - **I4 — Logging never crashes the caller.** `trace()` returns normally even when the underlying file write fails (disk full, EACCES, file locked on Windows). Falsifiable: monkey-patch `appendFileSync` to throw; assert `trace()` does not throw and the process continues.
 - **I5 — Rotation triggers at the threshold.** When `LOG_FILE` size is `>= 5 * 1024 * 1024` bytes at the start of a `trace` call, the file is renamed to `${LOG_FILE}.1` before the new line is written. Falsifiable: prepopulate `LOG_FILE` to ≥5 MB; call `trace(...)`; assert (a) `${LOG_FILE}.1` now exists, (b) `LOG_FILE` contains only the just-written line.
-- **I6 — Rotation overwrites the prior backup.** When rotation triggers and `${LOG_FILE}.1` already exists, it is replaced (Node's `renameSync` overwrites on POSIX; on Windows, `renameSync` over an existing file is supported by recent Node and is the documented behaviour relied on here). Only one backup is retained. Falsifiable: rotate twice; assert `${LOG_FILE}.2` does **not** exist and `${LOG_FILE}.1` contains the *most recent* pre-rotation contents.
-- **I7 — Rotation does not split a single event.** Because rotation is checked at the *start* of `trace` (before `appendFileSync`), no line is ever cut in half by a rotation. The line that triggered rotation lands wholly in the post-rotation `LOG_FILE`. Falsifiable: write up to (5 MB − 10 bytes), then write a line longer than 100 bytes; assert that line is entirely in the new `LOG_FILE` and not at the tail of `.log.1`.
+- **I6 — Rotation overwrites the prior backup.** When rotation triggers and `${LOG_FILE}.1` already exists, it is replaced (Node's `renameSync` overwrites on POSIX; on Windows, `renameSync` over an existing file is supported by recent Node and is the documented behaviour relied on here). Only one backup is retained. Falsifiable: rotate twice; assert `${LOG_FILE}.2` does **not** exist and `${LOG_FILE}.1` contains the _most recent_ pre-rotation contents.
+- **I7 — Rotation does not split a single event.** Because rotation is checked at the _start_ of `trace` (before `appendFileSync`), no line is ever cut in half by a rotation. The line that triggered rotation lands wholly in the post-rotation `LOG_FILE`. Falsifiable: write up to (5 MB − 10 bytes), then write a line longer than 100 bytes; assert that line is entirely in the new `LOG_FILE` and not at the tail of `.log.1`.
 - **I8 — Stdout mirror exists for every successful file write.** A compact one-liner is written to `console.log` in the same `trace` call. Falsifiable: capture `process.stdout`; assert exactly one write per `trace`. (Note: stdout mirror runs **even if the file write fails** — see §6.)
 
 ## 4. How (briefly)
@@ -80,22 +80,22 @@ The `runId` field is conventionally present on every per-run event but is **not 
 
 ## 5. How tested
 
-| Spec section / claim                                 | Test file | Test name | Status |
-|------------------------------------------------------|-----------|-----------|--------|
-| §3 I1 one line per call, `\n` terminated             | `__tests__/log.test.ts` | `writes one JSON line per call, terminated by \\n` | done |
-| §3 I2 every line is valid JSON                       | `__tests__/log.test.ts` | `each line parses to JSON with t (ISO) and event keys` | done |
-| §3 I3 `t` + `event` always present                   | `__tests__/log.test.ts` | `each line parses to JSON with t (ISO) and event keys` | done |
-| §3 I4 file-write failure doesn't throw               | `__tests__/log.test.ts` | `does not throw when the underlying append fails`     | done |
-| §3 I5 rotation triggers at ≥5 MB                     | `__tests__/log.test.ts` | `rotates to .log.1 when the file is >=5 MB at write time` | done |
-| §3 I6 rotation overwrites prior `.log.1`             | `__tests__/log.test.ts` | `overwrites a prior .log.1 on subsequent rotation`    | done |
-| §3 I8 stdout mirror per call                         | `__tests__/log.test.ts` | `mirrors with [run N] prefix when runId is provided`  | done |
-| §2.1 redaction default denylist                      | `__tests__/log.test.ts` | `redacts authorization, cookie, password, and token at the top level` | done |
-| §2.1 redaction recurses into nested objects/arrays   | `__tests__/log.test.ts` | `recursively redacts banned keys from nested objects` / `inside arrays` | done |
-| §2.1 redaction case-insensitive                      | `__tests__/log.test.ts` | `matches denylisted keys case-insensitively`          | done |
-| §2.1 caller's ctx not mutated                        | `__tests__/log.test.ts` | `does not mutate the caller's ctx object`             | done |
-| §2.1 `LOG_REDACT` env var extends the denylist       | `__tests__/log.test.ts` | `honours LOG_REDACT env var to extend the denylist`   | done |
-| §2.1 circular ctx does not throw                     | `__tests__/log.test.ts` | `survives a circular reference in ctx without throwing` | done |
-| §2 each documented event kind appears with the right shape | — (would need an integration harness collecting trace lines from a real run) | — | TODO(test) |
+| Spec section / claim                                       | Test file                                                                    | Test name                                                               | Status     |
+| ---------------------------------------------------------- | ---------------------------------------------------------------------------- | ----------------------------------------------------------------------- | ---------- |
+| §3 I1 one line per call, `\n` terminated                   | `__tests__/log.test.ts`                                                      | `writes one JSON line per call, terminated by \\n`                      | done       |
+| §3 I2 every line is valid JSON                             | `__tests__/log.test.ts`                                                      | `each line parses to JSON with t (ISO) and event keys`                  | done       |
+| §3 I3 `t` + `event` always present                         | `__tests__/log.test.ts`                                                      | `each line parses to JSON with t (ISO) and event keys`                  | done       |
+| §3 I4 file-write failure doesn't throw                     | `__tests__/log.test.ts`                                                      | `does not throw when the underlying append fails`                       | done       |
+| §3 I5 rotation triggers at ≥5 MB                           | `__tests__/log.test.ts`                                                      | `rotates to .log.1 when the file is >=5 MB at write time`               | done       |
+| §3 I6 rotation overwrites prior `.log.1`                   | `__tests__/log.test.ts`                                                      | `overwrites a prior .log.1 on subsequent rotation`                      | done       |
+| §3 I8 stdout mirror per call                               | `__tests__/log.test.ts`                                                      | `mirrors with [run N] prefix when runId is provided`                    | done       |
+| §2.1 redaction default denylist                            | `__tests__/log.test.ts`                                                      | `redacts authorization, cookie, password, and token at the top level`   | done       |
+| §2.1 redaction recurses into nested objects/arrays         | `__tests__/log.test.ts`                                                      | `recursively redacts banned keys from nested objects` / `inside arrays` | done       |
+| §2.1 redaction case-insensitive                            | `__tests__/log.test.ts`                                                      | `matches denylisted keys case-insensitively`                            | done       |
+| §2.1 caller's ctx not mutated                              | `__tests__/log.test.ts`                                                      | `does not mutate the caller's ctx object`                               | done       |
+| §2.1 `LOG_REDACT` env var extends the denylist             | `__tests__/log.test.ts`                                                      | `honours LOG_REDACT env var to extend the denylist`                     | done       |
+| §2.1 circular ctx does not throw                           | `__tests__/log.test.ts`                                                      | `survives a circular reference in ctx without throwing`                 | done       |
+| §2 each documented event kind appears with the right shape | — (would need an integration harness collecting trace lines from a real run) | —                                                                       | TODO(test) |
 
 ### Deliberately not tested
 
@@ -108,7 +108,7 @@ The `runId` field is conventionally present on every per-run event but is **not 
 - **Resolved — dead `existsSync` branch in `rotateIfNeeded` removed.** `renameSync` overwrites on POSIX and modern Windows Node, so the comment-only conditional was always a no-op.
 - **⚠️ Drift — `LOG_PATH` is CWD-relative.** Documented effective path is `server/data/tickle.log` only because the server is launched from `server/`. If anyone ever runs the server from the repo root or from a different CWD, the log relocates silently and the README's tail commands stop working. Resolve to an absolute path anchored to the module location (e.g. `path.resolve(import.meta.dirname, "../data/tickle.log")`).
 - **⚠️ Drift — vocabulary not typed.** See §2 — events are stringly-typed and the documented vocabulary in CLAUDE.md is a strict undercount of actual call sites. Hoist `TraceEventKind` into `domain/observability.ts` post-refactor and have `trace` accept the union.
-- **⚠️ Drift — circular-reference crash path.** `JSON.stringify` of a `ctx` containing a cycle throws *outside* the `try/catch` that wraps `appendFileSync`, so I4 is technically falsifiable: passing a cyclic object would crash the agent. Wrap the `JSON.stringify` (and the whole body, ideally) in a single outer `try/catch`, or sanitize via a `safeStringify` helper.
+- **⚠️ Drift — circular-reference crash path.** `JSON.stringify` of a `ctx` containing a cycle throws _outside_ the `try/catch` that wraps `appendFileSync`, so I4 is technically falsifiable: passing a cyclic object would crash the agent. Wrap the `JSON.stringify` (and the whole body, ideally) in a single outer `try/catch`, or sanitize via a `safeStringify` helper.
 - **⚠️ Drift — stdout mirror runs even on file-write failure.** `console.log` runs unconditionally after the file-write `try/catch`. That's probably desirable (operator still sees the line live), but is undocumented and could surprise a caller assuming "silent on disk failure" means "silent everywhere."
 - **❓ Question — should rotation be checked less often?** `statSync` runs on every `trace` call. Cost is sub-millisecond, but on a busy run with hundreds of trace calls per second it's measurable. Could amortize by checking every Nth call or by tracking `bytesWrittenSinceLastCheck` in module state. Probably not worth the complexity until profiling shows it.
 - **❓ Question — should `LOG_FILE` export be the absolute resolved path?** Today it is the literal `"data/tickle.log"` constant — i.e. the same CWD-relative string the writer uses. If consumers want to read or tail the file programmatically they must resolve it themselves. Tied to the CWD-relative drift above.

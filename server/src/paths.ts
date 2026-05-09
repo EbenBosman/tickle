@@ -27,7 +27,7 @@ export const SCREENSHOTS_DIR = "screenshots";
  * `existsSync` after this returns a non-null path.
  */
 export function safeResolveScreenshot(rest: string): string | null {
-  if (!rest || !rest.endsWith(".png")) return null;
+  if (!rest?.endsWith(".png")) return null;
   const base = resolve(SCREENSHOTS_DIR);
   const candidate = resolve(SCREENSHOTS_DIR, rest);
   // Separator-boundary guard: e.g. base = /tmp/screenshots; candidate

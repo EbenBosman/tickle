@@ -1,4 +1,12 @@
-import { newLlmClient, newAnthropicClient, chatOnce, MODEL, type LlmClient, type Message, type ChatResponse } from "./llm.ts";
+import {
+  newLlmClient,
+  newAnthropicClient,
+  chatOnce,
+  MODEL,
+  type LlmClient,
+  type Message,
+  type ChatResponse,
+} from "./llm.ts";
 import { type BlockOutcome, mergeRescuedOutcome } from "./blockOutcome.ts";
 import { Session } from "./browser.ts";
 import { toolDefs, executeTool, type ToolResult } from "./tools.ts";
@@ -15,14 +23,9 @@ import {
 } from "./pause.ts";
 import { trace } from "./log.ts";
 import { detectLoginPrompt } from "./loginDetect.ts";
-import {
-  type Block,
-  type BlockKind,
-  type ClickRole,
-  parseBlocks,
-  substituteVars,
-} from "./blocks.ts";
+import { type Block, type BlockKind, parseBlocks, substituteVars } from "./blocks.ts";
 import { scanForm, checkQuestionAnswered, type FormQuestion } from "./formScan.ts";
+import { asString } from "./coerce.ts";
 
 // Message and ToolCall types come from llm.ts now.
 
@@ -52,7 +55,9 @@ async function chatWithRetry(
 ): Promise<ChatResponse> {
   let lastErr: unknown = null;
   for (let attempt = 0; attempt <= RETRY_BACKOFFS_MS.length; attempt++) {
-    if (isCancelled()) throw lastErr ?? new Error("cancelled before chat attempt");
+    if (isCancelled()) {
+      throw lastErr instanceof Error ? lastErr : new Error("cancelled before chat attempt");
+    }
     const controller = new AbortController();
     setActiveController(controller);
     try {
@@ -95,7 +100,13 @@ function pruneOldImages(messages: Message[], keep: number): Message[] {
 export type BlockStatus = "pending" | "running" | "done" | "failed" | "skipped";
 
 export type AgentEvent =
-  | { kind: "block_start"; block_id: string; block_kind: BlockKind; summary: string; path: string[] }
+  | {
+      kind: "block_start";
+      block_id: string;
+      block_kind: BlockKind;
+      summary: string;
+      path: string[];
+    }
   | {
       kind: "block_end";
       block_id: string;
@@ -184,14 +195,13 @@ export async function runAgent(
   const session = new Session(runId);
   const client = newLlmClient();
   const rescueEnabled = getSetting("rescue_enabled") === "true";
-  const rescueModel = getSetting("rescue_model") ?? "claude-sonnet-4-6";
   const rescueOnCancel = getSetting("rescue_on_cancel") === "true";
   const claudeClient: LlmClient | null =
-    rescueEnabled && process.env.ANTHROPIC_API_KEY
-      ? newAnthropicClient()
-      : null;
+    rescueEnabled && process.env.ANTHROPIC_API_KEY ? newAnthropicClient() : null;
   let activeController: AbortController | null = null;
-  const setActiveController = (c: AbortController | null) => { activeController = c; };
+  const setActiveController = (c: AbortController | null) => {
+    activeController = c;
+  };
   const getActiveController = () => activeController;
 
   let cancelled = false;
@@ -218,7 +228,16 @@ export async function runAgent(
   );
   let stepIdx = 0;
   const persist = (
-    kind: "thought" | "tool_call" | "tool_result" | "error" | "final" | "block_start" | "block_end" | "var_set" | "remember",
+    kind:
+      | "thought"
+      | "tool_call"
+      | "tool_result"
+      | "error"
+      | "final"
+      | "block_start"
+      | "block_end"
+      | "var_set"
+      | "remember",
     payload: unknown,
     screenshotPath?: string,
   ) => {
@@ -240,7 +259,9 @@ export async function runAgent(
     client,
     claudeClient,
     isRescueRequested: () => rescueRequested,
-    clearRescueRequest: () => { rescueRequested = false; },
+    clearRescueRequest: () => {
+      rescueRequested = false;
+    },
     setActiveController,
     getActiveController,
     vars: new Map(),
@@ -304,7 +325,12 @@ async function executeBlocks(
       summary,
       path: [...ctx.blockPath],
     });
-    ctx.persist("block_start", { id: block.id, kind: block.kind, summary, path: [...ctx.blockPath] });
+    ctx.persist("block_start", {
+      id: block.id,
+      kind: block.kind,
+      summary,
+      path: [...ctx.blockPath],
+    });
     trace("block.start", { runId: ctx.runId, kind: block.kind, summary: summary.slice(0, 120) });
 
     const localOutcome = await executeBlock(ctx, block);
@@ -381,7 +407,7 @@ function blockSummary(block: Block, vars: Map<string, unknown>): string {
     case "goal":
       return substituteVars(block.description, vars).slice(0, 200) || "(empty goal)";
     case "pause":
-      return block.message?.slice(0, 200) || "Pause for human";
+      return block.message?.slice(0, 200) ?? "Pause for human";
     case "click": {
       const role = block.role && block.role !== "any" ? ` (${block.role})` : "";
       return `Click${role}: ${substituteVars(block.target, vars)}`;
@@ -413,7 +439,8 @@ async function executeBlock(ctx: ExecCtx, block: Block): Promise<BlockOutcome> {
       }
 
       case "pause": {
-        const message = block.message?.trim() || "Paused for human review.";
+        const trimmed = block.message?.trim() ?? "";
+        const message = trimmed.length > 0 ? trimmed : "Paused for human review.";
         if (pauseRun(ctx.runId, { reason: message, auto: true })) {
           ctx.emit({ kind: "paused", reason: message, auto: true });
           trace("block.pause", { runId: ctx.runId, blockId: block.id });
@@ -458,12 +485,15 @@ async function executeBlock(ctx: ExecCtx, block: Block): Promise<BlockOutcome> {
           doneOutputHint: "output should be the extracted value (string, array, or object).",
         });
         if (!out.success) {
-          return { status: "failed", error: out.note || "extract failed" };
+          return { status: "failed", error: out.note ?? "extract failed" };
         }
         let parsed: unknown = out.output;
         if (typeof parsed === "string") {
           const trimmed = parsed.trim();
-          if ((trimmed.startsWith("[") && trimmed.endsWith("]")) || (trimmed.startsWith("{") && trimmed.endsWith("}"))) {
+          if (
+            (trimmed.startsWith("[") && trimmed.endsWith("]")) ||
+            (trimmed.startsWith("{") && trimmed.endsWith("}"))
+          ) {
             try {
               parsed = JSON.parse(trimmed);
             } catch {
@@ -472,7 +502,8 @@ async function executeBlock(ctx: ExecCtx, block: Block): Promise<BlockOutcome> {
           }
         }
         ctx.vars.set(block.var_name, parsed);
-        const preview = typeof parsed === "string" ? parsed.slice(0, 200) : JSON.stringify(parsed).slice(0, 200);
+        const preview =
+          typeof parsed === "string" ? parsed.slice(0, 200) : JSON.stringify(parsed).slice(0, 200);
         ctx.emit({ kind: "var_set", name: block.var_name, preview });
         ctx.persist("var_set", { name: block.var_name, preview });
         return { status: "done", summary: `Extracted into $${block.var_name}` };
@@ -501,7 +532,7 @@ async function executeBlock(ctx: ExecCtx, block: Block): Promise<BlockOutcome> {
           ctx,
           block.id,
           block.context ? substituteVars(block.context, ctx.vars) : undefined,
-          block.unanswered_var || "unanswered",
+          block.unanswered_var?.trim() ? block.unanswered_var : "unanswered",
         );
       }
 
@@ -526,7 +557,7 @@ async function executeBlock(ctx: ExecCtx, block: Block): Promise<BlockOutcome> {
             error: `for_each.items "${block.items}" did not resolve to an array. Use $varname (set by an earlier extract block) or a literal JSON array.`,
           };
         }
-        const itemVar = block.item_var || "item";
+        const itemVar = block.item_var?.trim() ? block.item_var : "item";
         const childPath = [...ctx.blockPath, block.id];
         for (let i = 0; i < itemsRaw.length; i++) {
           if (ctx.isCancelled()) return { status: "cancelled" };
@@ -632,10 +663,15 @@ async function runAiSubGoal(
     }
     if (ctx.isCancelled()) return { status: "cancelled" };
 
-    const llmStart = Date.now();
     const pruned = pruneOldImages(messages, KEEP_RECENT_IMAGES);
     const imagesKept = pruned.reduce((n, m) => n + (m.images?.length ?? 0), 0);
-    trace("llm.request", { runId: ctx.runId, blockId, step, messages: pruned.length, images_kept: imagesKept });
+    trace("llm.request", {
+      runId: ctx.runId,
+      blockId,
+      step,
+      messages: pruned.length,
+      images_kept: imagesKept,
+    });
 
     let response: ChatResponse;
     try {
@@ -651,7 +687,14 @@ async function runAiSubGoal(
         ctx.isCancelled,
         ctx.setActiveController,
         (attempt, error, backoffMs) => {
-          trace("llm.retry", { runId: ctx.runId, blockId, step, attempt, error, backoff_ms: backoffMs });
+          trace("llm.retry", {
+            runId: ctx.runId,
+            blockId,
+            step,
+            attempt,
+            error,
+            backoff_ms: backoffMs,
+          });
         },
       );
     } catch (err) {
@@ -694,7 +737,7 @@ async function runAiSubGoal(
       tool_calls: msg.tool_calls.length > 0 ? msg.tool_calls : undefined,
     });
 
-    if (msg.content && msg.content.trim()) {
+    if (msg.content?.trim()) {
       ctx.emit({ kind: "thought", text: msg.content, block_id: blockId });
       ctx.persist("thought", { text: msg.content, block_id: blockId });
     }
@@ -710,7 +753,7 @@ async function runAiSubGoal(
       if (ctx.isCancelled()) return { status: "cancelled" };
 
       const name = call.function?.name ?? "";
-      const args = (call.function?.arguments ?? {}) as Record<string, unknown>;
+      const args = (call.function?.arguments ?? {});
 
       // Stall detection
       const argsKey = JSON.stringify(args);
@@ -803,7 +846,9 @@ async function runAiSubGoal(
       ctx.emit({
         kind: "tool_result",
         name,
-        result: toolMsg.images ? ({ ...result, image_base64: toolMsg.images[0] } as ToolResult) : result,
+        result: toolMsg.images
+          ? ({ ...result, image_base64: toolMsg.images[0] } as ToolResult)
+          : result,
         screenshotPath,
         block_id: blockId,
       });
@@ -873,7 +918,8 @@ function buildStatelessUserPrompt(
     ctx.vars.size > 0
       ? `VARIABLES:\n${Array.from(ctx.vars.entries())
           .map(([k, v]) => {
-            const preview = typeof v === "string" ? v.slice(0, 200) : JSON.stringify(v).slice(0, 200);
+            const preview =
+              typeof v === "string" ? v.slice(0, 200) : JSON.stringify(v).slice(0, 200);
             return `  $${k} = ${preview}`;
           })
           .join("\n")}\n\n`
@@ -1004,7 +1050,11 @@ async function runStatelessStep(
     return { success: false, note: "rescue_requested" };
   }
 
-  trace("stateless.request", { runId: ctx.runId, blockId: opts.blockId, prompt_chars: userPrompt.length });
+  trace("stateless.request", {
+    runId: ctx.runId,
+    blockId: opts.blockId,
+    prompt_chars: userPrompt.length,
+  });
   let response: ChatResponse;
   try {
     response = await chatWithRetry(
@@ -1022,7 +1072,13 @@ async function runStatelessStep(
       ctx.isCancelled,
       ctx.setActiveController,
       (attempt, error, backoffMs) => {
-        trace("llm.retry", { runId: ctx.runId, blockId: opts.blockId, attempt, error, backoff_ms: backoffMs });
+        trace("llm.retry", {
+          runId: ctx.runId,
+          blockId: opts.blockId,
+          attempt,
+          error,
+          backoff_ms: backoffMs,
+        });
       },
     );
   } catch (err) {
@@ -1051,7 +1107,7 @@ async function runStatelessStep(
   });
 
   const msg = response.message;
-  if (msg.content && msg.content.trim()) {
+  if (msg.content?.trim()) {
     ctx.emit({ kind: "thought", text: msg.content, block_id: opts.blockId });
     ctx.persist("thought", { text: msg.content, block_id: opts.blockId });
   }
@@ -1062,13 +1118,13 @@ async function runStatelessStep(
   for (const call of calls) {
     if (ctx.isCancelled()) return { success: false, note: "cancelled" };
     const name = call.function?.name ?? "";
-    const args = (call.function?.arguments ?? {}) as Record<string, unknown>;
+    const args = (call.function?.arguments ?? {});
     ctx.emit({ kind: "tool_call", name, args, block_id: opts.blockId });
     ctx.persist("tool_call", { name, args, block_id: opts.blockId });
     trace("tool.call", { runId: ctx.runId, blockId: opts.blockId, name, args });
 
     if (name === "remember") {
-      const note = String(args.note ?? "").slice(0, MAX_MEMORY_ENTRY_CHARS).trim();
+      const note = asString(args.note).slice(0, MAX_MEMORY_ENTRY_CHARS).trim();
       if (note) {
         ctx.memory.push(note);
         if (ctx.memory.length > MAX_MEMORY_ENTRIES) ctx.memory.shift();
@@ -1104,11 +1160,22 @@ async function runStatelessStep(
       const id = (args as { id?: unknown }).id;
       if (typeof id !== "number" || !opts.allowedActIds.includes(id)) {
         const validList = opts.allowedActIds.join(", ");
-        const errMsg = `Refused: id ${id} is not one of this question's valid input ids [${validList}]. Picking outside this set would click an unrelated element on the page.`;
-        ctx.emit({ kind: "tool_result", name, result: { ok: false, error: errMsg }, block_id: opts.blockId });
+        const idStr = typeof id === "number" ? String(id) : JSON.stringify(id);
+        const errMsg = `Refused: id ${idStr} is not one of this question's valid input ids [${validList}]. Picking outside this set would click an unrelated element on the page.`;
+        ctx.emit({
+          kind: "tool_result",
+          name,
+          result: { ok: false, error: errMsg },
+          block_id: opts.blockId,
+        });
         ctx.persist("tool_result", { name, ok: false, text: errMsg, block_id: opts.blockId });
-        trace("questionnaire.invalid_act_id", { runId: ctx.runId, blockId: opts.blockId, id, allowed: opts.allowedActIds });
-        if (!outcome) outcome = { success: false, note: errMsg };
+        trace("questionnaire.invalid_act_id", {
+          runId: ctx.runId,
+          blockId: opts.blockId,
+          id,
+          allowed: opts.allowedActIds,
+        });
+        outcome ??= { success: false, note: errMsg };
         continue;
       }
     }
@@ -1143,7 +1210,8 @@ async function runVerifyBlock(
     task: `Determine whether the following condition holds, given the current page. Respond by calling done(success=true) if it holds, done(success=false, note=<reason>) if it doesn't. CONDITION: ${condition}`,
     includeSnapshot: !visualOnly,
     includeScreenshot: true,
-    doneOutputHint: "success=true if condition holds; success=false with a note explaining why otherwise.",
+    doneOutputHint:
+      "success=true if condition holds; success=false with a note explaining why otherwise.",
   });
   return { pass: out.success, reason: out.note ?? "" };
 }
@@ -1168,7 +1236,11 @@ async function runQuestionnaireBlock(
     return { status: "failed", error: "No form inputs detected on this page." };
   }
 
-  trace("questionnaire.scan", { runId: ctx.runId, questions: scan.questions.length, inputs: scan.input_count });
+  trace("questionnaire.scan", {
+    runId: ctx.runId,
+    questions: scan.questions.length,
+    inputs: scan.input_count,
+  });
   // Diagnostic: log every question + its tagged inputs so we can see exactly
   // what the model was told. Critical for diagnosing wrong-element clicks.
   for (let qi = 0; qi < scan.questions.length; qi++) {
@@ -1206,7 +1278,9 @@ async function runQuestionnaireBlock(
     kind: "remember",
     note: `Questionnaire has ${enriched.length} questions, ${scan.input_count} inputs total.`,
   });
-  ctx.memory.push(`Questionnaire has ${enriched.length} questions across ${scan.input_count} inputs.`);
+  ctx.memory.push(
+    `Questionnaire has ${enriched.length} questions across ${scan.input_count} inputs.`,
+  );
 
   // 3. Per-question loop — each question is one stateless answer + one stateless verify.
   const unanswered: { question: string; reason: string }[] = [];
@@ -1221,7 +1295,12 @@ async function runQuestionnaireBlock(
 
     const q = enriched[i];
     const validIds = q.inputs.map((inp) => inp.tickle_id);
-    const idsList = q.inputs.map((inp) => `[${inp.tickle_id}] ${inp.type}${inp.option ? ` "${inp.option}"` : ""}${inp.checked ? " (checked)" : ""}${inp.current_value ? ` = "${inp.current_value.slice(0, 40)}"` : ""}`).join("\n");
+    const idsList = q.inputs
+      .map(
+        (inp) =>
+          `[${inp.tickle_id}] ${inp.type}${inp.option ? ` "${inp.option}"` : ""}${inp.checked ? " (checked)" : ""}${inp.current_value ? ` = "${inp.current_value.slice(0, 40)}"` : ""}`,
+      )
+      .join("\n");
     const stateExtra = `QUESTION ${i + 1} OF ${enriched.length} (${q.kind}):\n${q.question}\n\nINPUTS FOR THIS QUESTION (you may ONLY click ids in this list — any other id is invalid and will be refused):\n${idsList}\n\nVALID IDS for act(): [${validIds.join(", ")}]`;
 
     const answer = await runStatelessStep(ctx, {
@@ -1231,14 +1310,12 @@ async function runQuestionnaireBlock(
       includeScreenshot: true,
       stateExtra,
       allowedActIds: validIds,
-      extraTools: [
-        toolDefs.find((t) => t.function.name === "act"),
-      ],
+      extraTools: [toolDefs.find((t) => t.function.name === "act")],
       doneOutputHint: "Call done(success=true) if you answered, success=false if you skipped.",
     });
 
     if (!answer.success) {
-      unanswered.push({ question: q.question, reason: answer.note || "model declined to answer" });
+      unanswered.push({ question: q.question, reason: answer.note ?? "model declined to answer" });
       continue;
     }
 
@@ -1252,7 +1329,10 @@ async function runQuestionnaireBlock(
         reason: `act on this question's input navigated to ${currentUrl} (expected to stay on ${anchorUrl}). The form scan's element ids are now invalid — halting.`,
       });
       for (let j = i + 1; j < enriched.length; j++) {
-        unanswered.push({ question: enriched[j].question, reason: "skipped — page navigated away after a previous question" });
+        unanswered.push({
+          question: enriched[j].question,
+          reason: "skipped — page navigated away after a previous question",
+        });
       }
       break;
     }
@@ -1265,7 +1345,11 @@ async function runQuestionnaireBlock(
     try {
       domCheck = await checkQuestionAnswered(ctx.session, ids);
     } catch (err) {
-      domCheck = { answered: false, hits: [], reason: `dom check threw: ${(err as Error).message}` };
+      domCheck = {
+        answered: false,
+        hits: [],
+        reason: `dom check threw: ${(err as Error).message}`,
+      };
     }
     trace("questionnaire.verify_dom", {
       runId: ctx.runId,
@@ -1302,7 +1386,11 @@ async function runQuestionnaireBlock(
     name: unansweredVarName,
     preview: unanswered.length === 0 ? "(empty — all answered)" : `${unanswered.length} unanswered`,
   });
-  ctx.persist("var_set", { name: unansweredVarName, preview: `${unanswered.length} unanswered`, unanswered });
+  ctx.persist("var_set", {
+    name: unansweredVarName,
+    preview: `${unanswered.length} unanswered`,
+    unanswered,
+  });
 
   if (unanswered.length === 0) {
     return {
@@ -1326,7 +1414,10 @@ async function enrichQuestionsWithVision(
 ): Promise<FormQuestion[]> {
   // Build a compact text view of all questions so the AI can refine question wording in one pass.
   const scanSummary = questions
-    .map((q, i) => `Q${i + 1} (${q.kind}, ${q.inputs.length} input${q.inputs.length === 1 ? "" : "s"}):\nDOM-guessed text: ${q.question.slice(0, 240)}\nInputs: ${q.inputs.map((inp) => `[${inp.tickle_id}] ${inp.type}${inp.option ? ` "${inp.option}"` : ""}`).join("; ")}`)
+    .map(
+      (q, i) =>
+        `Q${i + 1} (${q.kind}, ${q.inputs.length} input${q.inputs.length === 1 ? "" : "s"}):\nDOM-guessed text: ${q.question.slice(0, 240)}\nInputs: ${q.inputs.map((inp) => `[${inp.tickle_id}] ${inp.type}${inp.option ? ` "${inp.option}"` : ""}`).join("; ")}`,
+    )
     .join("\n\n");
 
   const out = await runStatelessStep(ctx, {
@@ -1343,7 +1434,8 @@ Return a JSON array via done(output=[{"index": <Q-number>, "question": "<correct
     includeSnapshot: false,
     includeScreenshot: true,
     stateExtra: `DOM-DERIVED QUESTION LIST:\n\n${scanSummary}`,
-    doneOutputHint: 'Return JSON like [{"index": 1, "question": "..."}, ...] or [] if all DOM-guessed texts look correct.',
+    doneOutputHint:
+      'Return JSON like [{"index": 1, "question": "..."}, ...] or [] if all DOM-guessed texts look correct.',
   });
 
   if (!out.success || !Array.isArray(out.output)) return questions;
@@ -1384,9 +1476,10 @@ async function runClaudeRescue(
   localMessages: Message[],
 ): Promise<BlockOutcome> {
   if (!ctx.claudeClient) return { status: "failed", error: "no claude client" };
-  const rescueModel = (ctx.claudeClient as { provider: string }).provider === "anthropic"
-    ? getSetting("rescue_model") ?? "claude-sonnet-4-6"
-    : MODEL;
+  const rescueModel =
+    (ctx.claudeClient as { provider: string }).provider === "anthropic"
+      ? (getSetting("rescue_model") ?? "claude-sonnet-4-6")
+      : MODEL;
 
   trace("rescue.start", { runId: ctx.runId, blockId: block.id, model: rescueModel, priorError });
 
@@ -1394,7 +1487,9 @@ async function runClaudeRescue(
   const systemSuffix = `A previous agent already attempted this sub-task but failed: "${priorError.slice(0, 300)}". Try a different approach. The browser is at the state shown below.`;
 
   const rescueCtx: ExecCtx = { ...ctx, client: ctx.claudeClient };
-  const maxSteps = (block.kind === "goal" ? (block as { max_steps?: number }).max_steps : undefined) ?? MAX_STEPS_PER_GOAL;
+  const maxSteps =
+    (block.kind === "goal" ? (block as { max_steps?: number }).max_steps : undefined) ??
+    MAX_STEPS_PER_GOAL;
   const localStepCount = localMessages.filter((m) => m.role === "assistant").length;
   const localStatus = "failed";
 
@@ -1425,16 +1520,18 @@ async function runClaudeRescue(
   const insertStep = db.prepare(
     "INSERT INTO steps (run_id, idx, kind, payload, screenshot_path) VALUES (?, ?, ?, ?, ?)",
   );
-  const stepIdx = (db
-    .prepare("SELECT COALESCE(MAX(idx), -1) + 1 AS next FROM steps WHERE run_id = ?")
-    .get(ctx.runId) as { next: number }).next;
+  const stepIdx = (
+    db
+      .prepare("SELECT COALESCE(MAX(idx), -1) + 1 AS next FROM steps WHERE run_id = ?")
+      .get(ctx.runId) as { next: number }
+  ).next;
   insertStep.run(ctx.runId, stepIdx, "messages_export", JSON.stringify(exportPayload), null);
 
   trace("rescue.end", { runId: ctx.runId, blockId: block.id, status: rescueOutcome.status });
 
   // Generate lesson asynchronously (don't block the run on it)
-  generateLesson(ctx, block.id, instruction, priorError, rescueMessages, rescueModel).catch(
-    (err) => trace("rescue.lesson_error", { runId: ctx.runId, error: (err as Error).message }),
+  generateLesson(ctx, block.id, instruction, priorError, rescueMessages, rescueModel).catch((err) =>
+    trace("rescue.lesson_error", { runId: ctx.runId, error: (err as Error).message }),
   );
 
   return rescueOutcome;
@@ -1455,7 +1552,10 @@ async function generateLesson(
     .filter((m) => m.role === "assistant" && m.tool_calls?.length)
     .slice(-3)
     .flatMap((m) =>
-      (m.tool_calls ?? []).map((tc) => `${tc.function?.name}(${JSON.stringify(tc.function?.arguments ?? {}).slice(0, 80)})`),
+      (m.tool_calls ?? []).map(
+        (tc) =>
+          `${tc.function?.name}(${JSON.stringify(tc.function?.arguments ?? {}).slice(0, 80)})`,
+      ),
     )
     .join(", ");
 

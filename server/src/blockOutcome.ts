@@ -29,10 +29,7 @@ export type BlockOutcome =
  * - If local was anything other than failed, rescue should not have
  *   been called; pass through local for type safety.
  */
-export function mergeRescuedOutcome(
-  local: BlockOutcome,
-  rescue: BlockOutcome,
-): BlockOutcome {
+export function mergeRescuedOutcome(local: BlockOutcome, rescue: BlockOutcome): BlockOutcome {
   if (rescue.status === "cancelled") return { status: "cancelled", error: rescue.error };
   if (rescue.status === "done") return { status: "done", summary: rescue.summary };
   // rescue.status is "failed" or "skipped" — keep the local outcome.

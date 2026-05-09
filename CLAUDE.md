@@ -29,9 +29,10 @@ npm run dev:web             # only Vite (http://localhost:5173)
 ```
 
 Env vars (`server/.env.example`):
+
 - `LLM_BASE_URL` (default `http://127.0.0.1:1234/v1` — LM Studio). Point at Ollama with `http://127.0.0.1:11434/v1`, or any other OpenAI-compatible `/v1` endpoint.
 - `LLM_MODEL` (default `qwen3.6-27b-uncensored-hauhaucs-balanced`). Whatever name the LLM server reports for the loaded model. The default is an abliterated qwen3.6-27b — uncensored variants follow page-content instructions (forms, refusals, banners) without an extra policy layer on top of the locally running model.
-- `LLM_API_KEY` (default `not-needed`) — most local servers ignore this but the OpenAI client requires *something*.
+- `LLM_API_KEY` (default `not-needed`) — most local servers ignore this but the OpenAI client requires _something_.
 - `HEADED` (default `true`), `MAX_AGENT_STEPS`, `KEEP_RECENT_IMAGES` round out the agent config.
 
 Thinking mode is already wired: `chat_template_kwargs.enable_thinking: false` is passed on stateless atomic steps (extract, verify, per-question answer in questionnaire) where chain-of-thought is wasted latency. `runAiSubGoal` (multi-turn goal/click/fill blocks) leaves thinking on because planning benefits from it. The flag is recognised by Qwen3.x running under LM Studio or Ollama's /v1 endpoint; ignored by other backends.
@@ -39,6 +40,7 @@ Thinking mode is already wired: `chat_template_kwargs.enable_thinking: false` is
 ### Hardware
 
 Tested:
+
 - Windows / RTX 4080 (16 GB VRAM) — 27B at Q3_K_M / Q4_K_S fits cleanly; Q4_K_M needs partial CPU offload, especially with a long context.
 - Mac mini (Apple Silicon) — primary deployment target. Unified-memory budget governs quant size; aim to leave 4–8 GB for the OS + Chromium.
 - Linux — same VRAM rules as Windows; vLLM is the speed option once configured.
@@ -48,9 +50,11 @@ If the agent feels sluggish, check whether the model is partially on CPU. If it'
 ## Architecture
 
 ### Block-based execution
+
 Tasks are an ordered array of typed **blocks** (not free text). Each block has a `kind`, `params`, and an optional `pauseAfter` breakpoint flag. The executor walks them sequentially; each block reports `pending → running → done | failed | skipped`.
 
 Block kinds (see `server/src/blocks.ts`):
+
 - **`navigate`** — direct Playwright `page.goto`. No LLM.
 - **`pause`** — explicit human-in-loop checkpoint.
 - **`goal`** / **`click`** / **`fill`** / **`extract`** — AI sub-tasks. Each invokes a focused sub-agent loop with a tightly scoped system prompt and the `finish_step` tool. `extract` writes to a variable the executor stores in a per-run `Map<string, unknown>`.
@@ -59,7 +63,9 @@ Block kinds (see `server/src/blocks.ts`):
 `$varname` substitution happens via `substituteVars()` on string params before each block executes. `for_each.items` is special-cased (not substituted; either `$name` or literal JSON array).
 
 ### Sub-agent loop (per AI block)
+
 `runAiSubGoal` in `server/src/agent.ts`. The model gets:
+
 - `snapshot()` — labelled list of visible interactive elements (each tagged `data-tickle-id="N"`) + screenshot. See `server/src/snapshot.ts`. Defaults to viewport-only on dense pages (>50 elements).
 - `act(id, action, value?)` — click/fill/press/check/uncheck/hover/select_option on an element from the most recent snapshot.
 - `navigate`, `read_text`, `scroll`, `wait_for`, `screenshot`, `press_key`.
@@ -68,18 +74,22 @@ Block kinds (see `server/src/blocks.ts`):
 After every `navigate`/`act` the executor auto-takes a fresh snapshot and attaches it to the tool result, so the model always sees post-action state without asking. Image pruning keeps only the last `KEEP_RECENT_IMAGES` (default 3) screenshots' image data on each chat call; older messages keep their text.
 
 ### Persistent browser
+
 One shared Chromium profile at `server/data/profile/` via `chromium.launchPersistentContext`. Cookies, localStorage, IndexedDB, passkey credentials all survive across runs and server restarts. Each run gets a fresh tab, never closes the context. Headed by default with `--start-maximized`; `viewport: null` so the page reflows when the user resizes the window.
 
 A small `addInitScript` polyfills `__name` / `__publicField` in the page world — without it, `page.evaluate` callbacks compiled by tsx/esbuild throw `ReferenceError: __name`.
 
 ### Guardrails
+
 - **Login auto-pause** (`server/src/loginDetect.ts`) — known SSO hosts (Google, Microsoft, Okta, Auth0, Apple, Atlassian, Yahoo, GitHub `/login`, LinkedIn, X, Facebook), visible password fields, webauthn/one-time-code inputs, "Use your passkey" text. One-shot per run.
 - **Stall auto-pause** — three identical-shape tool calls in a row. One-shot per run.
 - **LLM retry with backoff** — `chatWithRetry` retries transient errors (`fetch failed`, `ECONN*`, `ETIMEDOUT`, `socket hang up`) at 1.5s and 4s; cancellation is honoured between attempts.
 - **Pause / Resume / Cancel** are first-class: `server/src/pause.ts` and `cancel.ts`. Cancel calls `client.abort()` to interrupt the in-flight LLM request (LM Studio / Ollama / whatever is wired via `LLM_BASE_URL`) and resumes any pause-waiter so the loop can observe the cancellation.
 
 ### Storage
+
 SQLite at `server/data/tickle.db` via `node:sqlite` (built into Node ≥22.5; stable in 24+). No native compile.
+
 - `tasks(id, name, instruction, steps, created_at)` — `steps` is JSON array of blocks. Lazy migration: tasks with `steps IS NULL` are populated from `instruction` on first GET (`ensureSteps` in `server/src/routes/tasks.ts`).
 - `runs(id, task_id, status, result, error, started_at, finished_at)` — `status` ∈ `running | done | error | cancelled`.
 - `steps(id, run_id, idx, kind, payload, screenshot_path, created_at)` — every event the agent emits (thoughts, tool_calls, tool_results, block_start, block_end, var_set, errors, finals). Used for live SSE replay.
@@ -87,9 +97,11 @@ SQLite at `server/data/tickle.db` via `node:sqlite` (built into Node ≥22.5; st
 SQLite stores `datetime('now')` as UTC space-separated; the frontend's `parseSqliteUtc` normalises it before computing elapsed times.
 
 ### SSE event stream
+
 `GET /api/runs/:id/stream` replays existing steps then subscribes via `server/src/bus.ts`. Event kinds: `thought`, `tool_call`, `tool_result`, `block_start`, `block_end`, `var_set`, `page_state`, `stats`, `paused`, `resumed`, `error`, `final`, `end`. Each carries a `block_id` where applicable so the UI can group/highlight.
 
 ### Trace log
+
 `server/data/tickle.log` is JSONL, rotated to `.log.1` at 5MB. Mirrored to stdout in compact form. Tail with `Get-Content -Wait`.
 
 ## Layout

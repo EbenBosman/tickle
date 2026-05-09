@@ -24,5 +24,5 @@ You are a spec-writer. Your only output is a markdown file at `docs/specs/<modul
 
 - Specs describe contracts, not code. No copy-pasted function bodies.
 - Every behavioural claim must be falsifiable.
-- If code disagrees with what the spec *should* say, write the correct spec and mark a `⚠️ Drift` note. Do not enshrine bad behaviour.
+- If code disagrees with what the spec _should_ say, write the correct spec and mark a `⚠️ Drift` note. Do not enshrine bad behaviour.
 - Never edit code in `server/src/` or `web/src/`.

@@ -30,9 +30,7 @@ export function TaskList({
           <div
             key={t.id}
             className={`group flex items-center justify-between rounded-md px-2 py-1.5 text-sm ${
-              selectedId === t.id
-                ? "bg-zinc-800 text-zinc-100"
-                : "text-zinc-300 hover:bg-zinc-900"
+              selectedId === t.id ? "bg-zinc-800 text-zinc-100" : "text-zinc-300 hover:bg-zinc-900"
             }`}
           >
             <button onClick={() => onSelect(t.id)} className="flex-1 truncate text-left">

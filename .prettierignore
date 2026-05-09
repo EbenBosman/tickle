@@ -1,0 +1,26 @@
+# Mirrors .gitignore where it matters for formatting.
+
+# Deps
+node_modules/
+**/node_modules/
+
+# Build / coverage / cache output
+dist/
+build/
+**/dist/
+**/build/
+coverage/
+.vitest/
+.cache/
+
+# Server runtime data — never reformat
+server/data/
+server/screenshots/
+
+# Lockfiles + generated
+package-lock.json
+**/package-lock.json
+
+# Logs
+*.log
+*.log.*

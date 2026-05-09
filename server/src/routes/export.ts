@@ -65,17 +65,11 @@ export async function exportRoutes(app: FastifyInstance) {
 
       if (hasRescue) {
         // DPO pair: rejected = local attempt, chosen = claude rescue
-        lines.push(
-          JSON.stringify({ role: "rejected", messages: payload.local_messages, meta }),
-        );
-        lines.push(
-          JSON.stringify({ role: "chosen", messages: payload.rescue_messages, meta }),
-        );
+        lines.push(JSON.stringify({ role: "rejected", messages: payload.local_messages, meta }));
+        lines.push(JSON.stringify({ role: "chosen", messages: payload.rescue_messages, meta }));
       } else {
         // Local model succeeded — still useful as positive SFT data
-        lines.push(
-          JSON.stringify({ role: "chosen", messages: payload.local_messages, meta }),
-        );
+        lines.push(JSON.stringify({ role: "chosen", messages: payload.local_messages, meta }));
       }
     }
 

@@ -12,9 +12,28 @@
     "test:server": "npm --prefix server test",
     "test:web": "npm --prefix web test",
     "typecheck:server": "npm --prefix server run typecheck",
-    "typecheck:web": "npm --prefix web run typecheck"
+    "typecheck:web": "npm --prefix web run typecheck",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "npm --prefix server run lint && npm --prefix web run lint",
+    "lint:server": "npm --prefix server run lint",
+    "lint:web": "npm --prefix web run lint",
+    "test:coverage": "npm --prefix server run test:coverage && npm --prefix web run test:coverage",
+    "prepare": "husky"
+  },
+  "lint-staged": {
+    "*.{ts,tsx,js,mjs,cjs}": [
+      "prettier --write",
+      "eslint --fix"
+    ],
+    "*.{json,md,yml,yaml}": [
+      "prettier --write"
+    ]
   },
   "devDependencies": {
-    "concurrently": "^9.2.1"
+    "concurrently": "^9.2.1",
+    "husky": "9.1.7",
+    "lint-staged": "17.0.3",
+    "prettier": "3.8.3"
   }
 }

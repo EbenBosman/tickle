@@ -16,23 +16,23 @@
 
 ### Exports
 
-| Symbol            | Kind     | Signature / shape                                                                                                            | Stability |
-|-------------------|----------|------------------------------------------------------------------------------------------------------------------------------|-----------|
-| `RunView`         | function | `(props: RunViewProps) => JSX.Element` — default export of the file (named).                                                  | stable    |
-| `BlockStatus`     | type     | `"pending" \| "running" \| "done" \| "failed" \| "skipped"`                                                                  | stable    |
-| `RunStatsSample`  | type     | `{ model: string; prompt_tokens: number; output_tokens: number; eval_duration_ms: number; tps: number }`                      | stable    |
-| `EntryCard`       | —        | local; not exported.                                                                                                          | —         |
-| `parseSqliteUtc`  | —        | local; not exported. Should move to `state/parseSqliteUtc.ts` per `_LAYERS.md` (re-used by other date displays).               | drift     |
+| Symbol           | Kind     | Signature / shape                                                                                                | Stability |
+| ---------------- | -------- | ---------------------------------------------------------------------------------------------------------------- | --------- |
+| `RunView`        | function | `(props: RunViewProps) => JSX.Element` — default export of the file (named).                                     | stable    |
+| `BlockStatus`    | type     | `"pending" \| "running" \| "done" \| "failed" \| "skipped"`                                                      | stable    |
+| `RunStatsSample` | type     | `{ model: string; prompt_tokens: number; output_tokens: number; eval_duration_ms: number; tps: number }`         | stable    |
+| `EntryCard`      | —        | local; not exported.                                                                                             | —         |
+| `parseSqliteUtc` | —        | local; not exported. Should move to `state/parseSqliteUtc.ts` per `_LAYERS.md` (re-used by other date displays). | drift     |
 
 ### Props (`RunViewProps`)
 
-| Prop            | Type                                                                                              | Required | Purpose                                                                            |
-|-----------------|---------------------------------------------------------------------------------------------------|----------|------------------------------------------------------------------------------------|
-| `runId`         | `number`                                                                                          | yes      | Run to subscribe to. Identity-reset effect: changing `runId` clears all state.     |
-| `onClose`       | `() => void`                                                                                      | no       | Renders a "← Back" affordance; absent in pinned-pane usage.                        |
-| `onDeleted`     | `() => void`                                                                                      | no       | Fires after `DELETE /api/runs/:id` succeeds (terminal-state Delete button).        |
-| `onStats`       | `(sample: RunStatsSample) => void`                                                                | no       | Forwarded for every `stats` event so the parent footer can show tok/s.             |
-| `onBlockStatus` | `(info: { blockId: string \| null; statusMap: Record<string, BlockStatus> }) => void`             | no       | Fires on every `block_start` / `block_end`. `blockId` is the *currently running* block (or `null`). `statusMap` is cumulative.|
+| Prop            | Type                                                                                  | Required | Purpose                                                                                                                        |
+| --------------- | ------------------------------------------------------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `runId`         | `number`                                                                              | yes      | Run to subscribe to. Identity-reset effect: changing `runId` clears all state.                                                 |
+| `onClose`       | `() => void`                                                                          | no       | Renders a "← Back" affordance; absent in pinned-pane usage.                                                                    |
+| `onDeleted`     | `() => void`                                                                          | no       | Fires after `DELETE /api/runs/:id` succeeds (terminal-state Delete button).                                                    |
+| `onStats`       | `(sample: RunStatsSample) => void`                                                    | no       | Forwarded for every `stats` event so the parent footer can show tok/s.                                                         |
+| `onBlockStatus` | `(info: { blockId: string \| null; statusMap: Record<string, BlockStatus> }) => void` | no       | Fires on every `block_start` / `block_end`. `blockId` is the _currently running_ block (or `null`). `statusMap` is cumulative. |
 
 ### Consumed HTTP / SSE surface
 
@@ -42,11 +42,11 @@
 
 ### Errors surfaced
 
-| Source                                                        | Surface                                                                 |
-|---------------------------------------------------------------|-------------------------------------------------------------------------|
-| `api.pauseRun` / `resumeRun` / `cancelRun` / `deleteRun` reject | `alert(...)` with the error message. No retry, no inline banner.       |
-| `EventSource.onerror`                                         | `es.close()` — no auto-reconnect, no UI signal. See §6.                |
-| `api.getRun` reject (mount or post-`end`)                     | Silently swallowed (`.catch(() => {})`).                                |
+| Source                                                          | Surface                                                          |
+| --------------------------------------------------------------- | ---------------------------------------------------------------- |
+| `api.pauseRun` / `resumeRun` / `cancelRun` / `deleteRun` reject | `alert(...)` with the error message. No retry, no inline banner. |
+| `EventSource.onerror`                                           | `es.close()` — no auto-reconnect, no UI signal. See §6.          |
+| `api.getRun` reject (mount or post-`end`)                       | Silently swallowed (`.catch(() => {})`).                         |
 
 ## 3. Invariants
 
@@ -63,23 +63,23 @@
 
 ### SSE event-kind → UI behaviour
 
-| Event                                  | UI effect                                                                                                                                  |
-|----------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------|
-| `{ replay: true, step }`               | Push one `Entry` reconstructed from the persisted `kind`/`payload`/`screenshot_path`. `renderBody()` formats per kind.                     |
-| `thought`                              | Push `Entry{ kind: "thought" }` with raw text body.                                                                                        |
-| `tool_call`                            | Push `Entry{ kind: "tool_call", toolName, body: JSON.stringify(args, null, 2) }`. Renders in a blue card with monospace pre.               |
-| `tool_result`                          | Push `Entry{ kind: "tool_result", toolName, ok, body: ok ? text : error, screenshot: screenshotPath }`. Image renders inline before body.  |
-| `block_start`                          | Push `Entry{ kind: "block_start", blockKind, body: summary }` (dashed card). Update `statusMap[blockId]="running"`, set `latestRunningRef`. Fire `onBlockStatus`. |
-| `block_end`                            | Push `Entry{ kind: "block_end", blockKind, ok, body: result \| error, unanswered? }`. Card colour: amber if `unanswered.length>0` (questionnaire "needs review"), else green/red by `ok`. Update `statusMap`, clear `latestRunningRef` if it matches. Fire `onBlockStatus`. |
-| `var_set`                              | Push `Entry{ kind: "var_set", body: "$name = preview" }` (small green strip).                                                              |
-| `remember`                             | Push `Entry{ kind: "remember" }` AND append `note` to `memory[]` (collapsed violet panel above the entry list, count + toggle).            |
-| `page_state`                           | Replace `pageState = { url, title }`. Banner above the entry list always shows the latest.                                                 |
-| `stats`                                | Forward to parent via `onStats`. Not rendered locally.                                                                                     |
-| `paused`                               | Set `paused=true`, `pauseInfo={reason, auto}`. Header swaps Pause→Resume; status pill switches to amber `paused`; if `auto`, render the amber explainer banner. |
-| `resumed`                              | Clear `paused` and `pauseInfo`.                                                                                                            |
-| `error` (`block_id?`)                  | Push `Entry{ kind: "error", body: error }` (red card). Does **not** terminate the stream.                                                  |
-| `final`                                | Push `Entry{ kind: "final", body: answer }` (green "Final answer" card).                                                                   |
-| `end`                                  | Set `status = ev.status`, close `EventSource`, stamp `finishedAt = now()`, then refetch `GET /api/runs/:id` to overwrite with canonical `finished_at`. The interval timer effect tears down because `status !== "running"`. |
+| Event                    | UI effect                                                                                                                                                                                                                                                                   |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `{ replay: true, step }` | Push one `Entry` reconstructed from the persisted `kind`/`payload`/`screenshot_path`. `renderBody()` formats per kind.                                                                                                                                                      |
+| `thought`                | Push `Entry{ kind: "thought" }` with raw text body.                                                                                                                                                                                                                         |
+| `tool_call`              | Push `Entry{ kind: "tool_call", toolName, body: JSON.stringify(args, null, 2) }`. Renders in a blue card with monospace pre.                                                                                                                                                |
+| `tool_result`            | Push `Entry{ kind: "tool_result", toolName, ok, body: ok ? text : error, screenshot: screenshotPath }`. Image renders inline before body.                                                                                                                                   |
+| `block_start`            | Push `Entry{ kind: "block_start", blockKind, body: summary }` (dashed card). Update `statusMap[blockId]="running"`, set `latestRunningRef`. Fire `onBlockStatus`.                                                                                                           |
+| `block_end`              | Push `Entry{ kind: "block_end", blockKind, ok, body: result \| error, unanswered? }`. Card colour: amber if `unanswered.length>0` (questionnaire "needs review"), else green/red by `ok`. Update `statusMap`, clear `latestRunningRef` if it matches. Fire `onBlockStatus`. |
+| `var_set`                | Push `Entry{ kind: "var_set", body: "$name = preview" }` (small green strip).                                                                                                                                                                                               |
+| `remember`               | Push `Entry{ kind: "remember" }` AND append `note` to `memory[]` (collapsed violet panel above the entry list, count + toggle).                                                                                                                                             |
+| `page_state`             | Replace `pageState = { url, title }`. Banner above the entry list always shows the latest.                                                                                                                                                                                  |
+| `stats`                  | Forward to parent via `onStats`. Not rendered locally.                                                                                                                                                                                                                      |
+| `paused`                 | Set `paused=true`, `pauseInfo={reason, auto}`. Header swaps Pause→Resume; status pill switches to amber `paused`; if `auto`, render the amber explainer banner.                                                                                                             |
+| `resumed`                | Clear `paused` and `pauseInfo`.                                                                                                                                                                                                                                             |
+| `error` (`block_id?`)    | Push `Entry{ kind: "error", body: error }` (red card). Does **not** terminate the stream.                                                                                                                                                                                   |
+| `final`                  | Push `Entry{ kind: "final", body: answer }` (green "Final answer" card).                                                                                                                                                                                                    |
+| `end`                    | Set `status = ev.status`, close `EventSource`, stamp `finishedAt = now()`, then refetch `GET /api/runs/:id` to overwrite with canonical `finished_at`. The interval timer effect tears down because `status !== "running"`.                                                 |
 
 ### Other implementation notes
 
@@ -93,39 +93,40 @@
 
 The current single file mixes **eight** concerns. The `_LAYERS.md` target carves them as follows. This list is the spec for what the refactor must produce:
 
-| Concern in today's `RunView.tsx`                                                                                  | Target file (`web/src/features/run-view/` unless noted)                  |
-|-------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------|
-| EventSource lifecycle, replay handling, identity-reset on `runId` change, mount/`end` `getRun` fallbacks          | `state/useRunStream.ts` (hook returning `{ entries, status, paused, pauseInfo, pageState, memory, startedAt, finishedAt }`) |
-| `parseSqliteUtc`, `formatDuration`, `computeElapsed`, the 1s interval, freeze-on-terminal logic                   | `state/parseSqliteUtc.ts` + `Timer.tsx` (presentational; takes `startedAt`, `finishedAt` props) |
-| Header (Run #, elapsed pill, Pause/Resume/Stop/Delete buttons, status pill)                                       | `RunView.tsx` orchestration + a small `RunHeader.tsx`                    |
-| `pageState` banner                                                                                                | `PageStateBanner.tsx` (props: `{ url, title } \| null`)                  |
-| Auto-pause amber explainer panel                                                                                  | `PauseBanner.tsx` (props: `{ reason?, auto? }`)                          |
-| `memory[]` collapsed violet panel                                                                                 | `MemoryPanel.tsx` (props: `{ notes: string[] }`)                         |
-| Entry list rendering loop + auto-scroll-to-bottom                                                                 | `EntryStream.tsx` (props: `{ entries }`); add windowing here.            |
-| Per-entry rendering switch (`EntryCard` and its kind-specific cards: thought / tool_call / tool_result / block_start / block_end / var_set / remember / error / final) | `EntryCard.tsx` + one card-per-kind (or a switch table) under `entry-cards/` |
+| Concern in today's `RunView.tsx`                                                                                                                                       | Target file (`web/src/features/run-view/` unless noted)                                                                     |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| EventSource lifecycle, replay handling, identity-reset on `runId` change, mount/`end` `getRun` fallbacks                                                               | `state/useRunStream.ts` (hook returning `{ entries, status, paused, pauseInfo, pageState, memory, startedAt, finishedAt }`) |
+| `parseSqliteUtc`, `formatDuration`, `computeElapsed`, the 1s interval, freeze-on-terminal logic                                                                        | `state/parseSqliteUtc.ts` + `Timer.tsx` (presentational; takes `startedAt`, `finishedAt` props)                             |
+| Header (Run #, elapsed pill, Pause/Resume/Stop/Delete buttons, status pill)                                                                                            | `RunView.tsx` orchestration + a small `RunHeader.tsx`                                                                       |
+| `pageState` banner                                                                                                                                                     | `PageStateBanner.tsx` (props: `{ url, title } \| null`)                                                                     |
+| Auto-pause amber explainer panel                                                                                                                                       | `PauseBanner.tsx` (props: `{ reason?, auto? }`)                                                                             |
+| `memory[]` collapsed violet panel                                                                                                                                      | `MemoryPanel.tsx` (props: `{ notes: string[] }`)                                                                            |
+| Entry list rendering loop + auto-scroll-to-bottom                                                                                                                      | `EntryStream.tsx` (props: `{ entries }`); add windowing here.                                                               |
+| Per-entry rendering switch (`EntryCard` and its kind-specific cards: thought / tool_call / tool_result / block_start / block_end / var_set / remember / error / final) | `EntryCard.tsx` + one card-per-kind (or a switch table) under `entry-cards/`                                                |
 
 Cross-cutting:
+
 - `Entry` and `StreamEvent` types belong in `domain/run-events.ts` (mirror of `server/src/domain/run.ts` `SseEvent`). Today they're inlined.
 - The screenshot `<img src="/screenshots/...">` URL construction is the only piece that must respect on-disk casing per `http-runs` §2 `/screenshots/*` drift.
 
 ## 6. How tested
 
-| Spec section / claim                                                              | Test file | Test name | Status     |
-|-----------------------------------------------------------------------------------|-----------|-----------|------------|
-| §3 I1 — identity reset on `runId` change                                          | —         | —         | TODO(test) |
-| §3 I2 — replay-before-live ordering preserved (mock SSE)                          | —         | —         | TODO(test) |
-| §3 I3 — timer freezes on `end` and tracks canonical `finished_at`                 | —         | —         | TODO(test) |
-| §3 I4 — paused state set by either SSE `paused` or `is_paused` mount fetch        | —         | —         | TODO(test) |
-| §3 I5 — auto-pause banner only renders for `auto: true`                           | —         | —         | TODO(test) |
-| §3 I6 — status pill switches to `paused` while running                            | —         | —         | TODO(test) |
-| §3 I7 — auto-scroll on entry append                                               | —         | —         | TODO(test) — non-trivial in jsdom; consider Playwright component test |
-| §3 I8 — `latestRunningRef` follows last-started/last-ended-matching-id semantics  | —         | —         | TODO(test) |
-| §4 event table — every kind produces the documented UI mutation (replay, thought, tool_call, tool_result, block_start, block_end, var_set, remember, page_state, stats, paused, resumed, error, final, end) | — | — | TODO(test) — one parameterised test per kind |
-| §4 — synthetic `paused` on reconnect is idempotent (no flicker)                   | —         | —         | TODO(test) |
-| §4 — `parseSqliteUtc` handles space-separated UTC and ISO-with-Z inputs           | —         | —         | TODO(test) — pure function, easy unit test once extracted |
-| §2 errors — `api.*` rejection path renders alert without crashing the view        | —         | —         | TODO(test) |
-| §2 props — `onStats` fired exactly once per `stats` event                         | —         | —         | TODO(test) |
-| §2 props — `onBlockStatus` fired on `block_start` and `block_end` with correct cumulative `statusMap` | — | — | TODO(test) |
+| Spec section / claim                                                                                                                                                                                        | Test file | Test name | Status                                                                |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- | --------- | --------------------------------------------------------------------- |
+| §3 I1 — identity reset on `runId` change                                                                                                                                                                    | —         | —         | TODO(test)                                                            |
+| §3 I2 — replay-before-live ordering preserved (mock SSE)                                                                                                                                                    | —         | —         | TODO(test)                                                            |
+| §3 I3 — timer freezes on `end` and tracks canonical `finished_at`                                                                                                                                           | —         | —         | TODO(test)                                                            |
+| §3 I4 — paused state set by either SSE `paused` or `is_paused` mount fetch                                                                                                                                  | —         | —         | TODO(test)                                                            |
+| §3 I5 — auto-pause banner only renders for `auto: true`                                                                                                                                                     | —         | —         | TODO(test)                                                            |
+| §3 I6 — status pill switches to `paused` while running                                                                                                                                                      | —         | —         | TODO(test)                                                            |
+| §3 I7 — auto-scroll on entry append                                                                                                                                                                         | —         | —         | TODO(test) — non-trivial in jsdom; consider Playwright component test |
+| §3 I8 — `latestRunningRef` follows last-started/last-ended-matching-id semantics                                                                                                                            | —         | —         | TODO(test)                                                            |
+| §4 event table — every kind produces the documented UI mutation (replay, thought, tool_call, tool_result, block_start, block_end, var_set, remember, page_state, stats, paused, resumed, error, final, end) | —         | —         | TODO(test) — one parameterised test per kind                          |
+| §4 — synthetic `paused` on reconnect is idempotent (no flicker)                                                                                                                                             | —         | —         | TODO(test)                                                            |
+| §4 — `parseSqliteUtc` handles space-separated UTC and ISO-with-Z inputs                                                                                                                                     | —         | —         | TODO(test) — pure function, easy unit test once extracted             |
+| §2 errors — `api.*` rejection path renders alert without crashing the view                                                                                                                                  | —         | —         | TODO(test)                                                            |
+| §2 props — `onStats` fired exactly once per `stats` event                                                                                                                                                   | —         | —         | TODO(test)                                                            |
+| §2 props — `onBlockStatus` fired on `block_start` and `block_end` with correct cumulative `statusMap`                                                                                                       | —         | —         | TODO(test)                                                            |
 
 ### Deliberately not tested
 

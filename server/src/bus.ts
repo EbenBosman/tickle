@@ -1,6 +1,8 @@
 import type { AgentEvent } from "./agent.ts";
 
-type Subscriber = (event: AgentEvent | { kind: "end"; status: string; result?: string; error?: string }) => void;
+type Subscriber = (
+  event: AgentEvent | { kind: "end"; status: string; result?: string; error?: string },
+) => void;
 
 const subs = new Map<number, Set<Subscriber>>();
 

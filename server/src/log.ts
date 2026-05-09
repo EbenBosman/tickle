@@ -98,8 +98,7 @@ export function trace(event: string, ctx: LogContext = {}): void {
   }
   // Compact console form for live tail. Uses the redacted ctx so the
   // stdout mirror is also safe.
-  const head =
-    typeof safeCtx.runId === "number" ? `[run ${safeCtx.runId}] ${event}` : event;
+  const head = typeof safeCtx.runId === "number" ? `[run ${safeCtx.runId}] ${event}` : event;
   const tail = Object.entries(safeCtx)
     .filter(([k, v]) => k !== "runId" && v !== undefined)
     .map(([k, v]) => {

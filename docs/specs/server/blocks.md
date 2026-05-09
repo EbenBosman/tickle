@@ -4,11 +4,12 @@
 
 ## 1. Why
 
-A tickle task is not free text — it is an ordered, typed program of **blocks**. Block kinds give the executor a finite, switchable surface (no free-form planning at the top level) and let the UI render distinct editors per kind. Because tasks are persisted as JSON in `tasks.steps` and replayed across server restarts, the block type union is a *durable schema*, not just an in-memory shape.
+A tickle task is not free text — it is an ordered, typed program of **blocks**. Block kinds give the executor a finite, switchable surface (no free-form planning at the top level) and let the UI render distinct editors per kind. Because tasks are persisted as JSON in `tasks.steps` and replayed across server restarts, the block type union is a _durable schema_, not just an in-memory shape.
 
-This module owns: (a) the canonical type union, (b) construction with sensible defaults (`newBlock`), (c) parsing/migration from legacy free-text instructions (`parseBlocks`, `instructionToBlocks`), (d) `$varname` interpolation (`substituteVars`), and (e) recursive walkers (`countBlocks`, `walkBlocks`) that handle `for_each.body` nesting. It is pure: no I/O, no LLM, no Playwright. The agent does the work; this file decides what the work *is shaped like*.
+This module owns: (a) the canonical type union, (b) construction with sensible defaults (`newBlock`), (c) parsing/migration from legacy free-text instructions (`parseBlocks`, `instructionToBlocks`), (d) `$varname` interpolation (`substituteVars`), and (e) recursive walkers (`countBlocks`, `walkBlocks`) that handle `for_each.body` nesting. It is pure: no I/O, no LLM, no Playwright. The agent does the work; this file decides what the work _is shaped like_.
 
 > **Non-obvious why:**
+>
 > - **Persisted schema.** Field renames or removals require a SQL/JSON migration; you cannot just edit a type. Same for `BlockKind` — dropping a value strands every saved task that uses it.
 > - **Mirrored on the frontend.** `web/src/blocks.ts` redeclares the same union (plus UI metadata). The two files MUST stay in sync; the post-refactor target is one shared `domain/` module imported by both.
 > - **`$var` is in domain.** Substitution rules belong with the type — every executor branch in `agent.ts` calls `substituteVars` per param. Centralising the regex here is the only way to keep behaviour consistent.
@@ -17,27 +18,27 @@ This module owns: (a) the canonical type union, (b) construction with sensible d
 
 ### Exports
 
-| Symbol | Kind | Signature / shape | Stability |
-|---|---|---|---|
-| `BlockKind` | type | `"navigate" \| "goal" \| "pause" \| "click" \| "fill" \| "extract" \| "verify" \| "questionnaire" \| "for_each"` | persisted — additions require frontend mirror; removals require migration |
-| `ClickRole` | type | `"any" \| "button" \| "link" \| "tab" \| "menuitem" \| "checkbox" \| "radio" \| "switch" \| "combobox" \| "option" \| "textbox"` | stable |
-| `BaseBlock` | interface | `{ id: string; kind: BlockKind; pauseAfter?: boolean }` | stable |
-| `NavigateBlock` | interface | `BaseBlock & { kind: "navigate"; url: string }` | persisted |
-| `GoalBlock` | interface | `BaseBlock & { kind: "goal"; description: string; max_steps?: number }` | persisted (`max_steps` default 12 lives in `agent.ts`, not here) |
-| `PauseBlock` | interface | `BaseBlock & { kind: "pause"; message?: string }` | persisted |
-| `ClickBlock` | interface | `BaseBlock & { kind: "click"; target: string; role?: ClickRole }` | persisted |
-| `FillBlock` | interface | `BaseBlock & { kind: "fill"; target: string; value: string }` (`value` may contain `$var`) | persisted |
-| `ExtractBlock` | interface | `BaseBlock & { kind: "extract"; target: string; var_name: string }` | persisted |
-| `VerifyBlock` | interface | `BaseBlock & { kind: "verify"; condition: string; on_fail?: "halt" \| "pause" }` | persisted |
-| `QuestionnaireBlock` | interface | `BaseBlock & { kind: "questionnaire"; context?: string; unanswered_var?: string }` | persisted |
-| `ForEachBlock` | interface | `BaseBlock & { kind: "for_each"; items: string; item_var?: string; body: Block[] }` | persisted |
-| `Block` | type | discriminated union of all of the above on `kind` | persisted |
-| `newBlock` | function | `(kind: BlockKind) => Block` — fresh `id` (UUID v4), kind-specific defaults | stable |
-| `instructionToBlocks` | function | `(instruction: string) => Block[]` — wraps trimmed instruction in a single `goal` block with a fresh UUID | stable (legacy migration) |
-| `parseBlocks` | function | `(json: string \| null \| undefined, fallbackInstruction?: string) => Block[]` | stable |
-| `substituteVars` | function | `(input: string, vars: Map<string, unknown>) => string` | stable |
-| `countBlocks` | function | `(blocks: Block[]) => number` — recurses into `for_each.body` | stable |
-| `walkBlocks` | function | `(blocks: Block[], visit: (b: Block) => void) => void` — depth-first, pre-order, recurses into `for_each.body` | stable |
+| Symbol                | Kind      | Signature / shape                                                                                                                | Stability                                                                 |
+| --------------------- | --------- | -------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| `BlockKind`           | type      | `"navigate" \| "goal" \| "pause" \| "click" \| "fill" \| "extract" \| "verify" \| "questionnaire" \| "for_each"`                 | persisted — additions require frontend mirror; removals require migration |
+| `ClickRole`           | type      | `"any" \| "button" \| "link" \| "tab" \| "menuitem" \| "checkbox" \| "radio" \| "switch" \| "combobox" \| "option" \| "textbox"` | stable                                                                    |
+| `BaseBlock`           | interface | `{ id: string; kind: BlockKind; pauseAfter?: boolean }`                                                                          | stable                                                                    |
+| `NavigateBlock`       | interface | `BaseBlock & { kind: "navigate"; url: string }`                                                                                  | persisted                                                                 |
+| `GoalBlock`           | interface | `BaseBlock & { kind: "goal"; description: string; max_steps?: number }`                                                          | persisted (`max_steps` default 12 lives in `agent.ts`, not here)          |
+| `PauseBlock`          | interface | `BaseBlock & { kind: "pause"; message?: string }`                                                                                | persisted                                                                 |
+| `ClickBlock`          | interface | `BaseBlock & { kind: "click"; target: string; role?: ClickRole }`                                                                | persisted                                                                 |
+| `FillBlock`           | interface | `BaseBlock & { kind: "fill"; target: string; value: string }` (`value` may contain `$var`)                                       | persisted                                                                 |
+| `ExtractBlock`        | interface | `BaseBlock & { kind: "extract"; target: string; var_name: string }`                                                              | persisted                                                                 |
+| `VerifyBlock`         | interface | `BaseBlock & { kind: "verify"; condition: string; on_fail?: "halt" \| "pause" }`                                                 | persisted                                                                 |
+| `QuestionnaireBlock`  | interface | `BaseBlock & { kind: "questionnaire"; context?: string; unanswered_var?: string }`                                               | persisted                                                                 |
+| `ForEachBlock`        | interface | `BaseBlock & { kind: "for_each"; items: string; item_var?: string; body: Block[] }`                                              | persisted                                                                 |
+| `Block`               | type      | discriminated union of all of the above on `kind`                                                                                | persisted                                                                 |
+| `newBlock`            | function  | `(kind: BlockKind) => Block` — fresh `id` (UUID v4), kind-specific defaults                                                      | stable                                                                    |
+| `instructionToBlocks` | function  | `(instruction: string) => Block[]` — wraps trimmed instruction in a single `goal` block with a fresh UUID                        | stable (legacy migration)                                                 |
+| `parseBlocks`         | function  | `(json: string \| null \| undefined, fallbackInstruction?: string) => Block[]`                                                   | stable                                                                    |
+| `substituteVars`      | function  | `(input: string, vars: Map<string, unknown>) => string`                                                                          | stable                                                                    |
+| `countBlocks`         | function  | `(blocks: Block[]) => number` — recurses into `for_each.body`                                                                    | stable                                                                    |
+| `walkBlocks`          | function  | `(blocks: Block[], visit: (b: Block) => void) => void` — depth-first, pre-order, recurses into `for_each.body`                   | stable                                                                    |
 
 ### `parseBlocks` semantics
 
@@ -64,7 +65,7 @@ This module never throws. All edge cases (missing variable, non-array JSON, bad 
 
 - **`Block.id` is a string.** `newBlock` returns `crypto.randomUUID()`; `instructionToBlocks` does the same. The agent uses `id` as the `block_id` on every SSE event and as the parent in `blockPath` for nested execution; collisions would corrupt the event tree.
 - **`BlockKind` is closed.** Every kind in the union has (a) a `newBlock` case, (b) an `executeBlock` case in `agent.ts`, (c) a `blockSummary` case in `agent.ts`, and (d) a frontend mirror in `web/src/blocks.ts` with `KIND_META`. Adding a kind requires touching all four.
-- **`pauseAfter` applies to every block kind.** It is on `BaseBlock`, honoured by `executeBlocks` after every successful (or rescued) block, and is *not* checked on `failed` / `cancelled` outcomes. The `pause` block kind is orthogonal — it pauses *during* execution; `pauseAfter` pauses *after*.
+- **`pauseAfter` applies to every block kind.** It is on `BaseBlock`, honoured by `executeBlocks` after every successful (or rescued) block, and is _not_ checked on `failed` / `cancelled` outcomes. The `pause` block kind is orthogonal — it pauses _during_ execution; `pauseAfter` pauses _after_.
 - **Block lifecycle states (`pending → running → done | failed | skipped`) live in `agent.ts`, not here.** This module declares no state field on `Block`; status is computed at runtime by the executor and emitted via SSE `block_start` / `block_end`. (Frontend mirrors a `BlockStatus` type for rendering.)
 - **`for_each.items` is the one string param NOT subject to `substituteVars`.** It is parsed structurally by `agent.ts`: `$name` → variable lookup; `[…]` → JSON literal; bare `name` → variable lookup as a kindness. `substituteVars` would mangle the `$` prefix into the resolved value before the executor could distinguish modes.
 - **`walkBlocks` is depth-first, pre-order.** `visit` runs on the parent before its `for_each.body` children. `countBlocks` counts the parent `for_each` plus every nested block.
@@ -83,24 +84,24 @@ This module never throws. All edge cases (missing variable, non-array JSON, bad 
 
 There are no tests for this module yet.
 
-| Spec section / claim | Test file | Test name | Status |
-|---|---|---|---|
-| §2 `parseBlocks` returns `[]` on null + empty fallback | — | `parseBlocks: null+empty fallback returns []` | TODO(test) |
-| §2 `parseBlocks` migrates legacy instruction when json is null | — | `parseBlocks: null json + non-empty fallback yields one goal block` | TODO(test) |
-| §2 `parseBlocks` returns array unchanged when json is a JSON array | — | `parseBlocks: passes through JSON array` | TODO(test) |
-| §2 `parseBlocks` returns `[]` on non-array JSON (no fallback) | — | `parseBlocks: non-array JSON drops fallback` | TODO(test) |
-| §2 `parseBlocks` falls back on malformed JSON | — | `parseBlocks: malformed JSON falls back to instruction` | TODO(test) |
-| §2 `substituteVars` no-`$` fast path | — | `substituteVars: input without $ is returned identity` | TODO(test) |
-| §2 `substituteVars` missing var preserves literal | — | `substituteVars: unknown $name is left intact` | TODO(test) |
-| §2 `substituteVars` string value inserted as-is | — | `substituteVars: string value substitutes verbatim` | TODO(test) |
-| §2 `substituteVars` non-string value JSON-encoded | — | `substituteVars: array/object/number is JSON.stringified` | TODO(test) |
-| §2 `substituteVars` multiple occurrences in one input | — | `substituteVars: replaces every match` | TODO(test) |
-| §2 `substituteVars` regex boundary (`$1`, `$.`, `$-` don't match) | — | `substituteVars: rejects illegal identifier starts` | TODO(test) |
-| §3 `Block.id` is a fresh UUID per `newBlock` call | — | `newBlock: ids are unique across calls` | TODO(test) |
-| §3 every `BlockKind` value is constructable via `newBlock` | — | `newBlock: handles every BlockKind exhaustively` | TODO(test) |
-| §3 `walkBlocks` is pre-order and recurses into `for_each.body` | — | `walkBlocks: parent visited before nested body` | TODO(test) |
-| §3 `countBlocks` counts parent + nested | — | `countBlocks: matches walkBlocks visit count` | TODO(test) |
-| §6 ⚠️ `substituteVars(undefined)` produces literal `"undefined"` | — | `substituteVars: undefined value coerces to "undefined"` | TODO(test) |
+| Spec section / claim                                               | Test file | Test name                                                           | Status     |
+| ------------------------------------------------------------------ | --------- | ------------------------------------------------------------------- | ---------- |
+| §2 `parseBlocks` returns `[]` on null + empty fallback             | —         | `parseBlocks: null+empty fallback returns []`                       | TODO(test) |
+| §2 `parseBlocks` migrates legacy instruction when json is null     | —         | `parseBlocks: null json + non-empty fallback yields one goal block` | TODO(test) |
+| §2 `parseBlocks` returns array unchanged when json is a JSON array | —         | `parseBlocks: passes through JSON array`                            | TODO(test) |
+| §2 `parseBlocks` returns `[]` on non-array JSON (no fallback)      | —         | `parseBlocks: non-array JSON drops fallback`                        | TODO(test) |
+| §2 `parseBlocks` falls back on malformed JSON                      | —         | `parseBlocks: malformed JSON falls back to instruction`             | TODO(test) |
+| §2 `substituteVars` no-`$` fast path                               | —         | `substituteVars: input without $ is returned identity`              | TODO(test) |
+| §2 `substituteVars` missing var preserves literal                  | —         | `substituteVars: unknown $name is left intact`                      | TODO(test) |
+| §2 `substituteVars` string value inserted as-is                    | —         | `substituteVars: string value substitutes verbatim`                 | TODO(test) |
+| §2 `substituteVars` non-string value JSON-encoded                  | —         | `substituteVars: array/object/number is JSON.stringified`           | TODO(test) |
+| §2 `substituteVars` multiple occurrences in one input              | —         | `substituteVars: replaces every match`                              | TODO(test) |
+| §2 `substituteVars` regex boundary (`$1`, `$.`, `$-` don't match)  | —         | `substituteVars: rejects illegal identifier starts`                 | TODO(test) |
+| §3 `Block.id` is a fresh UUID per `newBlock` call                  | —         | `newBlock: ids are unique across calls`                             | TODO(test) |
+| §3 every `BlockKind` value is constructable via `newBlock`         | —         | `newBlock: handles every BlockKind exhaustively`                    | TODO(test) |
+| §3 `walkBlocks` is pre-order and recurses into `for_each.body`     | —         | `walkBlocks: parent visited before nested body`                     | TODO(test) |
+| §3 `countBlocks` counts parent + nested                            | —         | `countBlocks: matches walkBlocks visit count`                       | TODO(test) |
+| §6 ⚠️ `substituteVars(undefined)` produces literal `"undefined"`   | —         | `substituteVars: undefined value coerces to "undefined"`            | TODO(test) |
 
 ### Deliberately not tested (here)
 

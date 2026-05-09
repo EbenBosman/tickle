@@ -4,9 +4,10 @@
 
 ## 1. Why
 
-Form-handling is the slow, error-prone seam of any browser agent. The model can read a screenshot and decide *what* to type, but asking it "have I now answered this question?" after every action is a 30–60s round-trip on a 26–30B local model and hallucinates badly on busy pages. `formScan` splits the concern: a deterministic DOM walk produces the exhaustive list of fields the agent must answer, and a deterministic post-action probe (`checkQuestionAnswered`) confirms each was filled. The LLM is left with the one job it does well — choosing a value. Selection still flows through `snapshot()` for AI loops; `formScan` is the **verification** half. The two coexist because the snapshot heuristic is tuned for "what's clickable on this viewport," whereas a questionnaire requires "every input in the form, including ones below the fold," with deterministic grouping.
+Form-handling is the slow, error-prone seam of any browser agent. The model can read a screenshot and decide _what_ to type, but asking it "have I now answered this question?" after every action is a 30–60s round-trip on a 26–30B local model and hallucinates badly on busy pages. `formScan` splits the concern: a deterministic DOM walk produces the exhaustive list of fields the agent must answer, and a deterministic post-action probe (`checkQuestionAnswered`) confirms each was filled. The LLM is left with the one job it does well — choosing a value. Selection still flows through `snapshot()` for AI loops; `formScan` is the **verification** half. The two coexist because the snapshot heuristic is tuned for "what's clickable on this viewport," whereas a questionnaire requires "every input in the form, including ones below the fold," with deterministic grouping.
 
 > **Non-obvious why:**
+>
 > - **`data-tickle-id` is shared with `snapshot()`.** Both modules tag with the same attribute and both reset numbering from `0` on every pass. Whichever pass ran most recently owns the ids; mixing ids across pre- and post-scan calls is a bug. The questionnaire flow is built around this — it scans once at block entry and never re-snapshots until the block ends.
 > - **Nav/header/anchor exclusion is a safety guarantee, not cosmetics.** Inputs nested in nav chrome are search boxes, language pickers, "open menu" buttons. Inputs nested inside `<a href>` navigate the page when clicked. Either ruins a questionnaire mid-flow.
 > - **Two-tier real-vs-role fallback.** Custom React forms with `<div role="radio">` exist; native `<input>` is preferred when both are present because role-only elements often have surprising click handlers.
@@ -15,33 +16,35 @@ Form-handling is the slow, error-prone seam of any browser agent. The model can 
 
 ### Exports
 
-| Symbol                  | Kind     | Signature / shape                                                                                       | Stability |
-|-------------------------|----------|---------------------------------------------------------------------------------------------------------|-----------|
-| `scanForm`              | function | `(session: Session) => Promise<FormScan>`                                                               | stable    |
-| `checkQuestionAnswered` | function | `(session: Session, ids: number[]) => Promise<{ answered: boolean; hits: Hit[]; reason: string }>`      | stable    |
-| `FormQuestionInput`     | type     | `{ tickle_id, type, option?, group?, value?, checked?, current_value? }`                                | stable    |
-| `FormQuestion`          | type     | `{ question, kind, inputs }` where `kind ∈ "radio"\|"checkbox"\|"text"\|"textarea"\|"select"\|"mixed"`  | stable    |
-| `FormScan`              | type     | `{ questions: FormQuestion[]; input_count: number }`                                                    | stable    |
+| Symbol                  | Kind     | Signature / shape                                                                                      | Stability |
+| ----------------------- | -------- | ------------------------------------------------------------------------------------------------------ | --------- |
+| `scanForm`              | function | `(session: Session) => Promise<FormScan>`                                                              | stable    |
+| `checkQuestionAnswered` | function | `(session: Session, ids: number[]) => Promise<{ answered: boolean; hits: Hit[]; reason: string }>`     | stable    |
+| `FormQuestionInput`     | type     | `{ tickle_id, type, option?, group?, value?, checked?, current_value? }`                               | stable    |
+| `FormQuestion`          | type     | `{ question, kind, inputs }` where `kind ∈ "radio"\|"checkbox"\|"text"\|"textarea"\|"select"\|"mixed"` | stable    |
+| `FormScan`              | type     | `{ questions: FormQuestion[]; input_count: number }`                                                   | stable    |
 
 `Session` is the wrapper around a Playwright `Page` from `browser.ts`.
 
 `scanForm`:
+
 - MUTATES the page: every matched input receives a `data-tickle-id="N"` attribute (numbering resets to 0 on each call). This is a deliberate side-effect — the executor and `act()` consume those ids.
 - Picks **one root**: the `<form>` element with the most matching descendants, falling back to `document` if no `<form>` exists.
 - Returns questions grouped by radio `name` / checkbox `name` / shared question container; text inputs are always solo.
 - Truncates `question` text to 400 chars and stored option labels are not length-bounded by the scanner (caller responsibility).
 
 `checkQuestionAnswered`:
+
 - READ-ONLY: does not mutate the DOM.
 - Resolves elements by `[data-tickle-id="<id>"]` selectors; returns `{ id, type: "missing", state: "absent" }` for ids no longer in the DOM.
 - Returns `answered: true` if **any one** of the supplied ids has a non-default state. The questionnaire flow treats one filled input per question as "this question is answered" — appropriate because radio groups have one selection, checkboxes accept any selection.
 
 ### Errors
 
-| Error                          | Returned when                                  | Caller should…                                |
-|--------------------------------|------------------------------------------------|------------------------------------------------|
-| (rejection from `page.evaluate`) | page detached / navigated mid-call            | catch and treat as failed/empty (see drift)    |
-| `{ answered: false, hits: [], reason: "no inputs to check" }` | called with empty `ids` | treat as unanswered without burning a round-trip |
+| Error                                                         | Returned when                      | Caller should…                                   |
+| ------------------------------------------------------------- | ---------------------------------- | ------------------------------------------------ |
+| (rejection from `page.evaluate`)                              | page detached / navigated mid-call | catch and treat as failed/empty (see drift)      |
+| `{ answered: false, hits: [], reason: "no inputs to check" }` | called with empty `ids`            | treat as unanswered without burning a round-trip |
 
 ### HTTP / SSE / IPC surface
 
@@ -95,32 +98,32 @@ A single `page.evaluate` does the entire walk in-page so the round-trip cost is 
 
 ## 5. How tested
 
-| Spec section / claim                                    | Test file | Test name | Status |
-|---------------------------------------------------------|-----------|-----------|--------|
-| §3.1 every visible input gets a `data-tickle-id`        | —         | —         | TODO(test) |
-| §3.2 ids are 0-based contiguous                         | —         | —         | TODO(test) |
-| §3.3 multi-form page picks the form with most inputs    | —         | —         | TODO(test) |
-| §3.3 no-form page falls back to `document`              | —         | —         | TODO(test) |
-| §3.4 `<nav>` / `<header>` / `<aside>` / `<footer>` ancestors exclude | — | — | TODO(test) |
-| §3.4 `role=navigation/banner/complementary/contentinfo` excludes | — | — | TODO(test) |
-| §3.4 `<a href="https://...">` ancestor excludes; `href="#"` and `javascript:` do not | — | — | TODO(test) |
-| §3.5 `display:none` / `visibility:hidden` / `opacity:0` / zero-rect excluded (self and ancestors) | — | — | TODO(test) |
-| §3.6 mixed real+role-only page returns only real inputs | —         | —         | TODO(test) |
-| §3.6 role-only-only page returns role inputs            | —         | —         | TODO(test) |
-| §3.7 each type-classification branch                    | —         | —         | TODO(test) |
-| §3.8 radios with shared `name` group                    | —         | —         | TODO(test) |
-| §3.8 nameless radios in a shared container group        | —         | —         | TODO(test) |
-| §3.8 text inputs are always solo                        | —         | —         | TODO(test) |
-| §3.9 `kind` is `"mixed"` for heterogeneous groups       | —         | —         | TODO(test) |
-| §3.10 label precedence: `<label for>` beats `aria-label` beats placeholder | — | — | TODO(test) |
-| §3.11 `<legend>` wins over preceding `<h2>`             | —         | —         | TODO(test) |
-| §3.11 preceding `<h2>` wins over container `innerText` fallback | — | — | TODO(test) |
-| §3.11 "Yes"/"No" preceding-sibling text is rejected     | —         | —         | TODO(test) |
-| §3.12 each per-type answered rule (text empty/non-empty, radio checked/unchecked, select default/non-default, select with `please choose` placeholder, contenteditable, aria-checked) | — | — | TODO(test) |
-| §3.13 `answered=true` if any id contributes; empty ids → `false` | — | — | TODO(test) |
-| §3.14 idempotent on stationary page                     | —         | —         | TODO(test) |
-| §3.15 re-scan re-numbers from 0                         | —         | —         | TODO(test) |
-| §3.16 password input is tagged (login guard is upstream) | —        | —         | TODO(test) |
+| Spec section / claim                                                                                                                                                                  | Test file | Test name | Status     |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- | --------- | ---------- |
+| §3.1 every visible input gets a `data-tickle-id`                                                                                                                                      | —         | —         | TODO(test) |
+| §3.2 ids are 0-based contiguous                                                                                                                                                       | —         | —         | TODO(test) |
+| §3.3 multi-form page picks the form with most inputs                                                                                                                                  | —         | —         | TODO(test) |
+| §3.3 no-form page falls back to `document`                                                                                                                                            | —         | —         | TODO(test) |
+| §3.4 `<nav>` / `<header>` / `<aside>` / `<footer>` ancestors exclude                                                                                                                  | —         | —         | TODO(test) |
+| §3.4 `role=navigation/banner/complementary/contentinfo` excludes                                                                                                                      | —         | —         | TODO(test) |
+| §3.4 `<a href="https://...">` ancestor excludes; `href="#"` and `javascript:` do not                                                                                                  | —         | —         | TODO(test) |
+| §3.5 `display:none` / `visibility:hidden` / `opacity:0` / zero-rect excluded (self and ancestors)                                                                                     | —         | —         | TODO(test) |
+| §3.6 mixed real+role-only page returns only real inputs                                                                                                                               | —         | —         | TODO(test) |
+| §3.6 role-only-only page returns role inputs                                                                                                                                          | —         | —         | TODO(test) |
+| §3.7 each type-classification branch                                                                                                                                                  | —         | —         | TODO(test) |
+| §3.8 radios with shared `name` group                                                                                                                                                  | —         | —         | TODO(test) |
+| §3.8 nameless radios in a shared container group                                                                                                                                      | —         | —         | TODO(test) |
+| §3.8 text inputs are always solo                                                                                                                                                      | —         | —         | TODO(test) |
+| §3.9 `kind` is `"mixed"` for heterogeneous groups                                                                                                                                     | —         | —         | TODO(test) |
+| §3.10 label precedence: `<label for>` beats `aria-label` beats placeholder                                                                                                            | —         | —         | TODO(test) |
+| §3.11 `<legend>` wins over preceding `<h2>`                                                                                                                                           | —         | —         | TODO(test) |
+| §3.11 preceding `<h2>` wins over container `innerText` fallback                                                                                                                       | —         | —         | TODO(test) |
+| §3.11 "Yes"/"No" preceding-sibling text is rejected                                                                                                                                   | —         | —         | TODO(test) |
+| §3.12 each per-type answered rule (text empty/non-empty, radio checked/unchecked, select default/non-default, select with `please choose` placeholder, contenteditable, aria-checked) | —         | —         | TODO(test) |
+| §3.13 `answered=true` if any id contributes; empty ids → `false`                                                                                                                      | —         | —         | TODO(test) |
+| §3.14 idempotent on stationary page                                                                                                                                                   | —         | —         | TODO(test) |
+| §3.15 re-scan re-numbers from 0                                                                                                                                                       | —         | —         | TODO(test) |
+| §3.16 password input is tagged (login guard is upstream)                                                                                                                              | —         | —         | TODO(test) |
 
 **Recommended test setup:** Playwright fixtures with `page.setContent(...)` HTML strings cover almost every claim without network or LLM. `Session` can be a thin shim exposing `{ page }`. Hidden-input tests need stylesheets to verify the cascaded-display traversal.
 
