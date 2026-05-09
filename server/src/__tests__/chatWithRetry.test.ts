@@ -21,7 +21,7 @@ vi.mock("../llm.ts", () => ({
 }));
 
 import { chatWithRetry, isTransientLLMError } from "../infrastructure/llm/chatWithRetry.ts";
-import { chatOnce } from "../llm.ts";
+import { chatOnce, type LlmClient } from "../llm.ts";
 
 const mockChatOnce = chatOnce as unknown as ReturnType<typeof vi.fn>;
 
@@ -61,7 +61,7 @@ describe("chatWithRetry — happy path", () => {
   it("returns the first successful response without retrying", async () => {
     reset();
     mockChatOnce.mockResolvedValueOnce({ message: { content: "ok", tool_calls: [] } });
-    const fakeClient = { provider: "openai" as const, client: {} };
+    const fakeClient = { provider: "openai" as const, client: {} } as unknown as LlmClient;
     const out = await chatWithRetry(
       fakeClient,
       { model: "m", messages: [] },
@@ -81,7 +81,7 @@ describe("chatWithRetry — retry on transient", () => {
     mockChatOnce
       .mockRejectedValueOnce(new Error("fetch failed"))
       .mockResolvedValueOnce({ message: { content: "second", tool_calls: [] } });
-    const fakeClient = { provider: "openai" as const, client: {} };
+    const fakeClient = { provider: "openai" as const, client: {} } as unknown as LlmClient;
     const out = await chatWithRetry(
       fakeClient,
       { model: "m", messages: [] },
@@ -101,7 +101,7 @@ describe("chatWithRetry — retry on transient", () => {
       .mockRejectedValueOnce(new Error("fetch failed"))
       .mockRejectedValueOnce(new Error("fetch failed"))
       .mockRejectedValueOnce(new Error("fetch failed"));
-    const fakeClient = { provider: "openai" as const, client: {} };
+    const fakeClient = { provider: "openai" as const, client: {} } as unknown as LlmClient;
     await expect(
       chatWithRetry(
         fakeClient,
@@ -120,7 +120,7 @@ describe("chatWithRetry — fatal errors aren't retried", () => {
   it("re-throws on the first non-transient error", async () => {
     reset();
     mockChatOnce.mockRejectedValueOnce(new Error("400 bad request"));
-    const fakeClient = { provider: "openai" as const, client: {} };
+    const fakeClient = { provider: "openai" as const, client: {} } as unknown as LlmClient;
     await expect(
       chatWithRetry(
         fakeClient,
@@ -138,7 +138,7 @@ describe("chatWithRetry — fatal errors aren't retried", () => {
 describe("chatWithRetry — cancellation", () => {
   it("throws immediately when isCancelled() is true before the first attempt", async () => {
     reset();
-    const fakeClient = { provider: "openai" as const, client: {} };
+    const fakeClient = { provider: "openai" as const, client: {} } as unknown as LlmClient;
     await expect(
       chatWithRetry(
         fakeClient,
@@ -158,7 +158,7 @@ describe("chatWithRetry — cancellation", () => {
       cancelled = true;
       return Promise.reject(new Error("fetch failed"));
     });
-    const fakeClient = { provider: "openai" as const, client: {} };
+    const fakeClient = { provider: "openai" as const, client: {} } as unknown as LlmClient;
     await expect(
       chatWithRetry(
         fakeClient,

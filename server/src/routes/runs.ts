@@ -8,7 +8,23 @@ import { pause, resume, isPaused, getPauseInfo } from "../pause.ts";
 import { trace } from "../log.ts";
 import { safeResolveScreenshot, SCREENSHOTS_DIR } from "../paths.ts";
 import { errorMessageFromThrow } from "../errors.ts";
+import type { EndEvent } from "../domain/run.ts";
 import { join } from "node:path";
+
+const PERSISTABLE_KINDS = new Set([
+  "thought",
+  "tool_call",
+  "tool_result",
+  "block_start",
+  "block_end",
+  "var_set",
+  "remember",
+  "error",
+  "final",
+  "page_state",
+  "stats",
+  "messages_export",
+]);
 
 function deleteRunArtifacts(runId: number): number {
   const rows = db
@@ -100,12 +116,13 @@ export async function runsRoutes(app: FastifyInstance) {
           runId,
         );
       }
-      publish(runId, {
+      const endEv: EndEvent = {
         kind: "end",
         status: outcome.status,
         result: outcome.result,
         error: outcome.error,
-      });
+      };
+      publish(runId, endEv);
       // Give late subscribers a moment, then drop the topic.
       setTimeout(() => endTopic(runId), 5000);
     })().catch((e) => {
@@ -337,20 +354,6 @@ export async function runsRoutes(app: FastifyInstance) {
     // results; only the live-only kinds (paused/resumed/end) need
     // forwarding. paused/resumed in-buffer are stale once we've already
     // sent a synthetic paused (above), so it's safe to drop them too.
-    const PERSISTABLE_KINDS = new Set([
-      "thought",
-      "tool_call",
-      "tool_result",
-      "block_start",
-      "block_end",
-      "var_set",
-      "remember",
-      "error",
-      "final",
-      "page_state",
-      "stats",
-      "messages_export",
-    ]);
     for (const ev of liveBuffer) {
       if (!PERSISTABLE_KINDS.has(ev.kind)) send(ev);
     }

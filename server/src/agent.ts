@@ -13,6 +13,7 @@ import { Session } from "./browser.ts";
 import { toolDefs, executeTool, type ToolResult } from "./tools.ts";
 import { takeSnapshot } from "./snapshot.ts";
 import { db, type Run, getSetting, addLesson, searchLessons } from "./db.ts";
+import type { StepKind } from "./domain/run.ts";
 import { registerCancel, clearCancel } from "./cancel.ts";
 import {
   registerRun as registerPause,
@@ -121,23 +122,7 @@ type ExecCtx = {
   /** Append-only short notes that persist across blocks for the whole run. */
   memory: string[];
   emit: (event: AgentEvent) => void;
-  persist: (
-    kind:
-      | "thought"
-      | "tool_call"
-      | "tool_result"
-      | "error"
-      | "final"
-      | "block_start"
-      | "block_end"
-      | "var_set"
-      | "remember"
-      | "page_state"
-      | "stats"
-      | "messages_export",
-    payload: unknown,
-    screenshotPath?: string,
-  ) => void;
+  persist: (kind: StepKind, payload: unknown, screenshotPath?: string) => void;
   isCancelled: () => boolean;
   loginAutoPaused: { value: boolean };
   blockPath: string[]; // for nested blocks: parent ids
@@ -185,23 +170,7 @@ export async function runAgent(
     "INSERT INTO steps (run_id, idx, kind, payload, screenshot_path) VALUES (?, ?, ?, ?, ?)",
   );
   let stepIdx = 0;
-  const persist = (
-    kind:
-      | "thought"
-      | "tool_call"
-      | "tool_result"
-      | "error"
-      | "final"
-      | "block_start"
-      | "block_end"
-      | "var_set"
-      | "remember"
-      | "page_state"
-      | "stats"
-      | "messages_export",
-    payload: unknown,
-    screenshotPath?: string,
-  ) => {
+  const persist = (kind: StepKind, payload: unknown, screenshotPath?: string) => {
     insertStep.run(runId, stepIdx++, kind, JSON.stringify(payload), screenshotPath ?? null);
   };
 

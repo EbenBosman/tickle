@@ -1,8 +1,7 @@
 import type { AgentEvent } from "./agent.ts";
+import type { EndEvent } from "./domain/run.ts";
 
-type Subscriber = (
-  event: AgentEvent | { kind: "end"; status: string; result?: string; error?: string },
-) => void;
+type Subscriber = (event: AgentEvent | EndEvent) => void;
 
 const subs = new Map<number, Set<Subscriber>>();
 
@@ -23,10 +22,7 @@ export function subscribe(runId: number, fn: Subscriber): () => void {
   };
 }
 
-export function publish(
-  runId: number,
-  event: AgentEvent | { kind: "end"; status: string; result?: string; error?: string },
-) {
+export function publish(runId: number, event: AgentEvent | EndEvent) {
   const set = subs.get(runId);
   if (!set) return;
   for (const fn of set) {

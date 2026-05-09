@@ -87,15 +87,10 @@ Issues surfaced while specifying the modules. Each is captured in detail in the 
 
 ### Misplaced code (resolves with refactor)
 
-- 🟠 **`EndEvent` shape duplicated** between `bus.ts` and `routes/runs.ts` — hoist to `domain/run.ts`.
 - 🟠 **Frontend domain duplication** — `web/src/blocks.ts` mirrors `server/src/blocks.ts` (types, `newBlock`, defaults). Post-refactor: shared `domain/`.
-- 🟠 **`SseEvent` union duplicated four ways** — emitted by `agent.ts`, carried by `bus.ts`, persisted by `db.ts` (`Step["kind"]`), consumed by `RunView.tsx`. All four lists differ from each other.
+- 🟡 **`SseEvent` union: web side still inline.** Server now has a canonical `domain/run.ts` (`StepKind`, `EndEvent`, `LIVE_ONLY_KINDS`). Web's `RunView.tsx` carries its own copy of the SSE event shape. Cross-workspace import is the same blocker as the `VALID_MODELS` split below.
 - 🟡 **`VALID_MODELS` server/web split** — server's `domain/models.ts` is now the source of truth; web's `SettingsPage.tsx::MODELS` carries the richer label/cost metadata for display and is marked `keep-in-sync`. A cross-workspace shared `domain/` would unify them; deferred until tsconfig project references or a `shared/` workspace land.
 - 🟠 **EventSource lives in `RunView.tsx`, not in a hook.** `_LAYERS.md` calls for `state/useRunStream.ts`.
-
-### Process / migration
-
-- 🟠 **One-shot ALTER migration won't scale.** `db.ts` uses `PRAGMA table_info` then `ALTER` — no migration framework, no version table. The next schema change needs a real story.
 
 ### Bookkeeping
 
@@ -140,3 +135,5 @@ Items fixed since the original Phase 2 pass. Each links to its regression test.
 - **`VALID_MODELS` server-side duplication.** Lifted to `server/src/domain/models.ts` (source of truth) with a typed `isValidModel` narrowing guard. `routes/settings.ts` imports the guard. The web `SettingsPage` keeps a richer `MODELS` array (with label + cost) for presentation, marked `keep-in-sync`. Regression: `server/src/__tests__/models.test.ts`.
 - **`parseSqliteUtc` duplicated in web.** Extracted to `web/src/state/parseSqliteUtc.ts`, with sibling `formatDuration` and `runDuration`. `RunView.tsx` and `App.tsx::runDuration` both consume it. Regression: `web/src/__tests__/parseSqliteUtc.test.ts` covers null inputs, both timestamp shapes round-tripping to the same epoch, the local-time mistake, and `runDuration` against fake-timer `Date.now()`.
 - **`SHOTS_DIR` / `paths.ts::SCREENSHOTS_DIR` / `routes/runs.ts` literal `screenshots/` divergence.** Aligned: `paths/storage.ts::SHOTS_DIR` defaults to `<server>/data/screenshots`; `paths.ts::SCREENSHOTS_DIR` re-exports it; `routes/runs.ts::deleteRunArtifacts` uses `path.join(SCREENSHOTS_DIR, ...)`. Existing deployments with the old `server/screenshots/` location can keep it via `TICKLE_SHOTS_DIR=screenshots`. Regression: `server/src/__tests__/browser.paths.test.ts`.
+- **Server-side `SseEvent`-related dups.** Hoisted to `server/src/domain/run.ts`: `EndEvent` (was inline in `bus.ts` and `routes/runs.ts`), `STEP_KINDS` array + `StepKind` union (was inline in `db.ts` and `agent.ts`), `LIVE_ONLY_KINDS` (new — names the kinds emitted but not persisted). `bus.ts` Subscriber, `routes/runs.ts` end-event construction, and `agent.ts` persist signature now consume these. Web side stays separate pending cross-workspace imports.
+- **One-shot ALTER migration won't scale.** New migration framework at `server/src/migrations/` with a `schema_versions` table. Each migration is `{ id, up }`, runs in its own BEGIN/COMMIT, and is recorded by id; re-running on an already-migrated DB is a no-op. Initial schema (tasks/runs/steps/settings/lessons + `runs.status` triggers) is migration `001-initial-schema`, idempotent for existing DBs (CREATE TABLE IF NOT EXISTS throughout). Regression: `server/src/__tests__/migrations.test.ts` covers fresh-DB application, idempotency across re-runs, BEGIN/COMMIT rollback semantics on failure, and the runs.status trigger surviving the migration boundary.

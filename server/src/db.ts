@@ -1,6 +1,8 @@
 import { DatabaseSync } from "node:sqlite";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
+import type { StepKind } from "./domain/run.ts";
+import { applyMigrations } from "./migrations/index.ts";
 
 const DB_PATH = process.env.TICKLE_DB_PATH ?? "data/tickle.db";
 if (DB_PATH !== ":memory:") {
@@ -11,82 +13,7 @@ export const db = new DatabaseSync(DB_PATH);
 db.exec("PRAGMA journal_mode = WAL;");
 db.exec("PRAGMA foreign_keys = ON;");
 
-db.exec(`
-CREATE TABLE IF NOT EXISTS tasks (
-  id          INTEGER PRIMARY KEY AUTOINCREMENT,
-  name        TEXT NOT NULL,
-  instruction TEXT NOT NULL,
-  steps       TEXT,
-  created_at  TEXT NOT NULL DEFAULT (datetime('now'))
-);
-
-CREATE TABLE IF NOT EXISTS runs (
-  id          INTEGER PRIMARY KEY AUTOINCREMENT,
-  task_id     INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
-  status      TEXT NOT NULL CHECK (status IN ('running', 'done', 'error', 'cancelled')),
-  result      TEXT,
-  error       TEXT,
-  started_at  TEXT NOT NULL DEFAULT (datetime('now')),
-  finished_at TEXT
-);
-
-CREATE TABLE IF NOT EXISTS steps (
-  id              INTEGER PRIMARY KEY AUTOINCREMENT,
-  run_id          INTEGER NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
-  idx             INTEGER NOT NULL,
-  kind            TEXT NOT NULL,
-  payload         TEXT NOT NULL,
-  screenshot_path TEXT,
-  created_at      TEXT NOT NULL DEFAULT (datetime('now'))
-);
-
-CREATE INDEX IF NOT EXISTS idx_runs_task ON runs(task_id);
-CREATE INDEX IF NOT EXISTS idx_steps_run ON steps(run_id, idx);
-
-CREATE TABLE IF NOT EXISTS settings (
-  key   TEXT PRIMARY KEY,
-  value TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS lessons (
-  id         INTEGER PRIMARY KEY AUTOINCREMENT,
-  run_id     INTEGER,
-  block_id   TEXT,
-  lesson     TEXT NOT NULL,
-  situation  TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
-);
-
-CREATE INDEX IF NOT EXISTS idx_lessons_run ON lessons(run_id);
-
-CREATE VIRTUAL TABLE IF NOT EXISTS lessons_fts USING fts5(
-  lesson,
-  situation,
-  content='lessons',
-  content_rowid='id'
-);
-`);
-
-// Migration: add `steps` column on existing DBs that pre-date it.
-const taskCols = db.prepare("PRAGMA table_info(tasks)").all() as { name: string }[];
-if (!taskCols.some((c) => c.name === "steps")) {
-  db.exec("ALTER TABLE tasks ADD COLUMN steps TEXT");
-}
-
-// CHECK constraint on `runs.status` is in CREATE TABLE for fresh DBs, but
-// SQLite can't ALTER an existing table to add it. Triggers enforce the same
-// invariant on existing DBs and are idempotent via IF NOT EXISTS.
-db.exec(`
-CREATE TRIGGER IF NOT EXISTS runs_status_check_insert
-  BEFORE INSERT ON runs
-  WHEN NEW.status NOT IN ('running', 'done', 'error', 'cancelled')
-  BEGIN SELECT RAISE(ABORT, 'invalid runs.status: must be running|done|error|cancelled'); END;
-
-CREATE TRIGGER IF NOT EXISTS runs_status_check_update
-  BEFORE UPDATE OF status ON runs
-  WHEN NEW.status NOT IN ('running', 'done', 'error', 'cancelled')
-  BEGIN SELECT RAISE(ABORT, 'invalid runs.status: must be running|done|error|cancelled'); END;
-`);
+applyMigrations(db);
 
 // On every process start, sweep any rows still marked `running`. They can only
 // be from a previous process lifetime — tsx-watch reload, crash, OS restart —
@@ -125,19 +52,7 @@ export type Step = {
   id: number;
   run_id: number;
   idx: number;
-  kind:
-    | "thought"
-    | "tool_call"
-    | "tool_result"
-    | "block_start"
-    | "block_end"
-    | "var_set"
-    | "remember"
-    | "error"
-    | "final"
-    | "page_state"
-    | "stats"
-    | "messages_export";
+  kind: StepKind;
   payload: string;
   screenshot_path: string | null;
   created_at: string;
