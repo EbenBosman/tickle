@@ -166,12 +166,13 @@ describe("substituteVars — replacement", () => {
     expect(substituteVars("$_a $x1 $snake_case_var", vars)).toBe("first second third");
   });
 
-  it('captures current-behaviour: an explicitly-set undefined value substitutes as the literal string "undefined"', () => {
-    // ⚠️ Drift per docs/specs/server/blocks.md §6: setting undefined into
-    // the Map differs from leaving the key absent. Pinning current
-    // behaviour so the fix path is observable.
+  it("an explicitly-set undefined value substitutes to the empty string (not the literal 'undefined')", () => {
+    // The key is present in the Map but value is undefined. Distinct
+    // from "key absent" (which leaves $name intact); the user has
+    // explicitly cleared the variable.
     const vars = new Map<string, unknown>([["v", undefined]]);
-    expect(substituteVars("$v", vars)).toBe("undefined");
+    expect(substituteVars("$v", vars)).toBe("");
+    expect(substituteVars("a $v b", vars)).toBe("a  b");
   });
 });
 

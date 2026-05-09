@@ -155,6 +155,7 @@ export function substituteVars(input: string, vars: Map<string, unknown>): strin
   return input.replace(/\$([a-zA-Z_][a-zA-Z0-9_]*)/g, (match, name: string) => {
     if (!vars.has(name)) return match;
     const v = vars.get(name);
+    if (v === undefined) return "";
     if (typeof v === "string") return v;
     return JSON.stringify(v);
   });

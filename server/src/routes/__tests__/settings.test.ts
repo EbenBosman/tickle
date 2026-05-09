@@ -78,11 +78,7 @@ describe("PUT /api/settings", () => {
   });
 
   it("accepts each known rescue_model", async () => {
-    for (const model of [
-      "claude-haiku-4-5-20251001",
-      "claude-sonnet-4-6",
-      "claude-opus-4-7",
-    ]) {
+    for (const model of ["claude-haiku-4-5-20251001", "claude-sonnet-4-6", "claude-opus-4-7"]) {
       const res = await app.inject({
         method: "PUT",
         url: "/api/settings",

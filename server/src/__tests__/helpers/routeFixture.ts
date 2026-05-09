@@ -9,9 +9,7 @@ import Fastify, { type FastifyInstance } from "fastify";
  * The helper imports the route module dynamically so the in-memory DB
  * created for this test is the one the route sees.
  */
-export async function buildAppWithRoute(
-  routePath: string,
-): Promise<FastifyInstance> {
+export async function buildAppWithRoute(routePath: string): Promise<FastifyInstance> {
   const mod = (await import(routePath)) as Record<string, unknown>;
   // Each route file exports exactly one register function — pick the
   // first function-typed export to keep callers from having to know the

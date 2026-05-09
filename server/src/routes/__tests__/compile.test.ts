@@ -59,7 +59,7 @@ beforeEach(async () => {
   llmState.throwErr = null;
   llmState.lastCallOpts = null;
   vi.resetModules();
-  const mod = (await import("../../routes/compile.ts"));
+  const mod = await import("../../routes/compile.ts");
   const Fastify = (await import("fastify")).default;
   app = Fastify();
   await app.register(mod.compileRoutes);

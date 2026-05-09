@@ -110,7 +110,17 @@ export type Step = {
   id: number;
   run_id: number;
   idx: number;
-  kind: "thought" | "tool_call" | "tool_result" | "error" | "final";
+  kind:
+    | "thought"
+    | "tool_call"
+    | "tool_result"
+    | "block_start"
+    | "block_end"
+    | "var_set"
+    | "remember"
+    | "error"
+    | "final"
+    | "messages_export";
   payload: string;
   screenshot_path: string | null;
   created_at: string;

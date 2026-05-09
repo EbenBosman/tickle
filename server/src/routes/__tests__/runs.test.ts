@@ -63,7 +63,7 @@ beforeEach(async () => {
   // diverge across the test seam).
   await import("../../cancel.ts");
   db = (await import("../../db.ts")).db;
-  const mod = (await import("../../routes/runs.ts"));
+  const mod = await import("../../routes/runs.ts");
   const Fastify = (await import("fastify")).default;
   app = Fastify();
   await app.register(mod.runsRoutes);
@@ -247,9 +247,7 @@ describe("POST /api/runs/:id/cancel", () => {
 
   it("returns 409 when the run is already terminal", async () => {
     const taskId = await makeTask();
-    const info = db
-      .prepare("INSERT INTO runs (task_id, status) VALUES (?, ?)")
-      .run(taskId, "done");
+    const info = db.prepare("INSERT INTO runs (task_id, status) VALUES (?, ?)").run(taskId, "done");
     const runId = Number(info.lastInsertRowid);
     const res = await app.inject({ method: "POST", url: `/api/runs/${runId}/cancel` });
     expect(res.statusCode).toBe(409);
@@ -305,9 +303,7 @@ describe("DELETE /api/runs/:id", () => {
 
   it("deletes a terminal run row", async () => {
     const taskId = await makeTask();
-    const info = db
-      .prepare("INSERT INTO runs (task_id, status) VALUES (?, ?)")
-      .run(taskId, "done");
+    const info = db.prepare("INSERT INTO runs (task_id, status) VALUES (?, ?)").run(taskId, "done");
     const runId = Number(info.lastInsertRowid);
     const res = await app.inject({ method: "DELETE", url: `/api/runs/${runId}` });
     expect(res.statusCode).toBe(200);
@@ -316,4 +312,3 @@ describe("DELETE /api/runs/:id", () => {
     expect(row).toBeUndefined();
   });
 });
-

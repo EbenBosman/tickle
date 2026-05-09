@@ -57,7 +57,8 @@ Block kinds (see `server/src/blocks.ts`):
 
 - **`navigate`** — direct Playwright `page.goto`. No LLM.
 - **`pause`** — explicit human-in-loop checkpoint.
-- **`goal`** / **`click`** / **`fill`** / **`extract`** — AI sub-tasks. Each invokes a focused sub-agent loop with a tightly scoped system prompt and the `finish_step` tool. `extract` writes to a variable the executor stores in a per-run `Map<string, unknown>`.
+- **`goal`** / **`click`** / **`fill`** / **`extract`** / **`verify`** — AI sub-tasks. Each invokes a focused sub-agent loop with a tightly scoped system prompt and the `finish_step` tool. `extract` writes to a variable the executor stores in a per-run `Map<string, unknown>`. `verify` evaluates a natural-language condition; on failure it either halts the run or auto-pauses (per `on_fail`).
+- **`questionnaire`** — deterministic form-walk variant. Scans inputs via `formScan.ts`, asks the model one stateless answer per question (thinking off), writes unanswered questions to a variable.
 - **`for_each`** — iterates over a `$varname` array, sets `$item`, recurses into nested `body` blocks.
 
 `$varname` substitution happens via `substituteVars()` on string params before each block executes. `for_each.items` is special-cased (not substituted; either `$name` or literal JSON array).
@@ -79,9 +80,21 @@ One shared Chromium profile at `server/data/profile/` via `chromium.launchPersis
 
 A small `addInitScript` polyfills `__name` / `__publicField` in the page world — without it, `page.evaluate` callbacks compiled by tsx/esbuild throw `ReferenceError: __name`.
 
+### Claude rescue
+
+When a local-model run fails or the user requests rescue, the executor can re-attempt the failing block under a more capable Claude model (`claude-haiku-4-5` / `claude-sonnet-4-6` / `claude-opus-4-7`, configured via the settings page). Gated by `rescue_enabled` and `rescue_on_cancel` in the `settings` table; requires `ANTHROPIC_API_KEY` in env. The rescue outcome is merged with the local outcome via a single `block_end` emission (see `server/src/blockOutcome.ts::mergeRescuedOutcome`). When a rescue produces a different outcome than the local attempt, the messages exchanged are persisted as a `messages_export` step row for later DPO export.
+
+### Lessons
+
+`lessons` table + FTS5 index (`lessons_fts`). Populated by `addLesson(runId, blockId, lesson, situation)` calls from the rescue path or from explicit "remember this" tool invocations. Surfaces in the settings page lesson list; consulted by future runs as additional system-prompt context. `searchLessons(query)` does FTS5 match with recency fallback.
+
+### Training-data export
+
+`GET /api/export` streams JSONL of `messages_export` step payloads. Optional `?status=rescued` filters to runs the rescue actually changed. Used to bootstrap DPO datasets from the rescue corpus.
+
 ### Guardrails
 
-- **Login auto-pause** (`server/src/loginDetect.ts`) — known SSO hosts (Google, Microsoft, Okta, Auth0, Apple, Atlassian, Yahoo, GitHub `/login`, LinkedIn, X, Facebook), visible password fields, webauthn/one-time-code inputs, "Use your passkey" text. One-shot per run.
+- **Login auto-pause** (`server/src/loginDetect.ts`) — known SSO hosts (Google, Microsoft, Okta, Auth0, Apple, Atlassian, Yahoo, GitHub `/login`, LinkedIn, X / twitter.com, Facebook), visible password fields, webauthn/one-time-code inputs, "Use your passkey" text. One-shot per run.
 - **Stall auto-pause** — three identical-shape tool calls in a row. One-shot per run.
 - **LLM retry with backoff** — `chatWithRetry` retries transient errors (`fetch failed`, `ECONN*`, `ETIMEDOUT`, `socket hang up`) at 1.5s and 4s; cancellation is honoured between attempts.
 - **Pause / Resume / Cancel** are first-class: `server/src/pause.ts` and `cancel.ts`. Cancel calls `client.abort()` to interrupt the in-flight LLM request (LM Studio / Ollama / whatever is wired via `LLM_BASE_URL`) and resumes any pause-waiter so the loop can observe the cancellation.
@@ -92,7 +105,9 @@ SQLite at `server/data/tickle.db` via `node:sqlite` (built into Node ≥22.5; st
 
 - `tasks(id, name, instruction, steps, created_at)` — `steps` is JSON array of blocks. Lazy migration: tasks with `steps IS NULL` are populated from `instruction` on first GET (`ensureSteps` in `server/src/routes/tasks.ts`).
 - `runs(id, task_id, status, result, error, started_at, finished_at)` — `status` ∈ `running | done | error | cancelled`.
-- `steps(id, run_id, idx, kind, payload, screenshot_path, created_at)` — every event the agent emits (thoughts, tool_calls, tool_results, block_start, block_end, var_set, errors, finals). Used for live SSE replay.
+- `steps(id, run_id, idx, kind, payload, screenshot_path, created_at)` — persisted event log. `kind` ∈ `thought | tool_call | tool_result | block_start | block_end | var_set | remember | error | final | messages_export`. Used for live SSE replay. Note: `page_state`, `stats`, `paused`, `resumed`, `end` are emitted live to the bus only and not persisted — clients reconnecting via replay will not see them.
+- `settings(key, value)` — small KV table for the rescue toggles and model choice; seeded with defaults on first run.
+- `lessons(id, run_id, block_id, lesson, situation, created_at)` + `lessons_fts` virtual table — see Lessons section above.
 
 SQLite stores `datetime('now')` as UTC space-separated; the frontend's `parseSqliteUtc` normalises it before computing elapsed times.
 
@@ -115,7 +130,7 @@ server/
     agent.ts            runAgent → executeBlocks → executeBlock → runAiSubGoal / runStatelessStep / runQuestionnaireBlock
     snapshot.ts         takeSnapshot: DOM walk, role inference, accessible name, viewport-only default
     formScan.ts         Deterministic form-input walk (form-scoped, exclusion of nav/header/<a>); checkQuestionAnswered
-    tools.ts            toolDefs + executeTool (snapshot, act, navigate, read_text, scroll, wait_for, press_key, screenshot, fetch_url, finish)
+    tools.ts            toolDefs + executeTool (snapshot, act, navigate, read_text, scroll, wait_for, press_key, screenshot, fetch_url). The agent loop appends finish_step at runtime.
     browser.ts          Persistent Chromium context, __name polyfill, screenshot helper
     llm.ts              OpenAI-compatible client + chatOnce wrapper (handles tool-call format, image attachments, thinking-mode toggle, AbortSignal cancellation)
     cancel.ts           per-run cancellation registry
@@ -126,6 +141,9 @@ server/
     routes/
       tasks.ts          CRUD + lazy steps migration
       runs.ts           start, cancel, pause, resume, delete, clear, /stream (SSE), /screenshots/*
+      compile.ts        POST /api/blocks/compile — prose to typed Block[] via the LLM
+      settings.ts       GET/PUT /api/settings; GET/DELETE /api/lessons
+      export.ts         GET /api/export — JSONL training-data dump from messages_export rows
 
 web/
   src/

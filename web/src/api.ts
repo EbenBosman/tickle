@@ -23,7 +23,17 @@ export type Step = {
   id: number;
   run_id: number;
   idx: number;
-  kind: "thought" | "tool_call" | "tool_result" | "error" | "final";
+  kind:
+    | "thought"
+    | "tool_call"
+    | "tool_result"
+    | "block_start"
+    | "block_end"
+    | "var_set"
+    | "remember"
+    | "error"
+    | "final"
+    | "messages_export";
   payload: string;
   screenshot_path: string | null;
   created_at: string;
@@ -66,7 +76,8 @@ export const api = {
       headers: { "content-type": "application/json" },
       body: JSON.stringify(patch),
     }).then((r) => j<Task>(r)),
-  deleteTask: (id: number) => fetch(`/api/tasks/${id}`, { method: "DELETE" }).then((r) => j(r)),
+  deleteTask: (id: number) =>
+    fetch(`/api/tasks/${id}`, { method: "DELETE" }).then((r) => j<{ ok: true }>(r)),
   startRun: (taskId: number) =>
     fetch(`/api/tasks/${taskId}/run`, { method: "POST" }).then((r) => j<{ run_id: number }>(r)),
   cancelRun: (runId: number) =>

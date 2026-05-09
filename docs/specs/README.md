@@ -71,10 +71,6 @@ Issues surfaced while specifying the modules. Each is captured in detail in the 
 
 ### Behavioural drift (code disagrees with docs/specs)
 
-- 🟠 **`Step["kind"]` type incomplete.** Type lists 5 kinds; agent persists 9 (`block_start`, `block_end`, `var_set`, `remember` missing). DB rows for those kinds bypass the type guarantee.
-- 🟠 **CLAUDE.md missing `verify` and `questionnaire` block kinds.** Code defines 9 block kinds; CLAUDE.md enumerates 7.
-- 🟠 **CLAUDE.md silent on the Claude-rescue / lessons / messages_export features.** `agent.ts::runClaudeRescue`, the `lessons` table, and the training-data `/api/export` endpoint exist but aren't documented in the architecture overview.
-- 🟡 **`loginDetect`: `twitter.com` alias** in code but not in `CLAUDE.md`'s SSO list.
 - 🟡 **`VALID_MODELS` duplicated** between `routes/settings.ts` and `web/src/components/SettingsPage.tsx` — change one, drift the other.
 
 ### Likely bugs
@@ -96,13 +92,6 @@ Issues surfaced while specifying the modules. Each is captured in detail in the 
 - 🟡 **`RunView` entries unbounded** — at hundreds of events per run, no virtualisation. Memory grows linearly.
 - 🟡 **Drag-drop cannot cross `for_each` boundaries** — separate `dragId` state per recursion level.
 - 🟠 **`addLesson` non-transactional** — `lessons` + `lessons_fts` writes can desync on crash between them.
-- 🟠 **Two diverging text-extraction walkers** — `read_text` applies 8 strip rules; `fetch_url` omits font-size, bounding-box, and colour-camouflage checks. Same hostile-content surface, different filter.
-- 🟠 **`wait_for` resolves on `state: "attached"`, not visible** — model can get a "present" signal for an invisible element.
-- 🟠 **`select_option` description lies** — schema says "option text or value"; Playwright matches value/label/text in priority order. Cross-language sites get inconsistent results.
-- 🟠 **Visibility check inconsistency.** `formScan` does `parseFloat(opacity) === 0`; `loginDetect` does string `!== "0"` (misses `"0.0"`). Should consolidate in one helper.
-- 🟡 **DOM mutation side effects.** `snapshot` and `scanForm` write `data-tickle-id` into the live page and never revert. SPAs that re-render could clobber tags before `act` runs; stale tags persist across snapshots.
-- 🟡 **Snapshot doesn't filter `aria-hidden="true"`** — accessibility-equivalence gap; could surface visually-decorative-but-DOM-active elements.
-- 🟡 **`substituteVars(undefined)`** produces literal string `"undefined"` (not an error, not empty).
 
 ### Misplaced code (resolves with refactor)
 
@@ -114,13 +103,6 @@ Issues surfaced while specifying the modules. Each is captured in detail in the 
 - 🟠 **`VALID_MODELS` duplicated** — `routes/settings.ts` and `web/src/components/SettingsPage.tsx`.
 - 🟠 **Two diverging text walkers** in `tools.ts` (already listed under bugs) — same root cause as the duplications above.
 - 🟠 **EventSource lives in `RunView.tsx`, not in a hook.** `_LAYERS.md` calls for `state/useRunStream.ts`.
-- 🟡 **`api.deleteTask`** typed `Promise<unknown>` while sibling deletes are typed `Promise<{ ok: true }>`.
-
-### Cross-platform / correctness
-
-- 🟠 **`PROFILE_DIR = "data/profile"` and `SHOTS_DIR = "screenshots"` are CWD-relative.** Only resolve correctly when launched from `server/`. Anchor with `import.meta.url` or env var.
-- 🟠 **`loadEnv` cwd-relative** — silently no-ops if launched from anywhere other than `server/`.
-- 🟠 **`loadEnv` non-ENOENT errors crash startup** with no friendly message.
 
 ### Security
 
@@ -151,3 +133,15 @@ Items fixed since the original Phase 2 pass. Each links to its regression test.
 - **Run-start IIFE swallowed throws.** The fire-and-forget IIFE in `routes/runs.ts` did not wrap `runAgent` in `try/catch`; a thrown rejection (from a Playwright crash, a SQLite write failure, an LLM-client throw, etc.) propagated as an unhandled rejection and left the `runs` row stuck at `running` forever. The IIFE now wraps `runAgent` in `try/catch`, converts the throw into a synthetic `{ status: "error", error }` outcome via the new `errorMessageFromThrow` helper, traces a `run.unhandled_throw` event, and routes the outcome through the same finalisation path as a graceful return. An outer `.catch()` on the IIFE itself is the last-resort guard against a throw inside finalisation (e.g. DB unavailable) so process-level crashes are still impossible. Regression: `server/src/__tests__/errors.test.ts` covers the error-message normalisation across Error / string / null / undefined / plain object / circular / primitive / Symbol / function inputs.
 - **`finish` vs `finish_step` correctness bug.** `toolDefs` previously included a `finish(answer: string)` tool; `agent.ts::toolsForAiBlock` appended `finish_step(success, output?, note?)`. The model saw both names; only `finish_step` was intercepted by `runAiSubGoal`. If the model picked `finish`, `executeTool` returned its `answer` as an ordinary tool result and the loop ran until step-limit / stall-detection failure. Removed the `finish` entry from `toolDefs` and the `case "finish":` branch from `executeTool`; the model now only sees `finish_step`. Regression: `server/src/__tests__/tools.test.ts` asserts `toolDefs` exposes neither `finish` nor `finish_step` (the latter is appended by the agent loop).
 - **Doubled `block_end` on Claude rescue.** `executeBlocks` emitted `block_end` with `status="failed"` after the local attempt, then a second `block_end` with `status="done"` if rescue succeeded — two SSE emissions and two `steps` rows for one block, with the UI relying on undocumented last-write-wins. The rescue merge now happens BEFORE emitting `block_end`: a new pure `mergeRescuedOutcome(local, rescue)` helper (in `server/src/blockOutcome.ts`) computes the canonical outcome (rescue cancelled → cancelled, rescue done → done with rescue summary, rescue failed → keep local error), and `executeBlocks` emits `block_end` exactly once. Regression: `server/src/__tests__/blockOutcome.test.ts`.
+- **`Step["kind"]` type incomplete.** Extended to all 10 persisted kinds (`thought`, `tool_call`, `tool_result`, `block_start`, `block_end`, `var_set`, `remember`, `error`, `final`, `messages_export`) in both `server/src/db.ts` and `web/src/api.ts`. `page_state`, `stats`, `paused`, `resumed`, `end` are emitted live to the bus only and intentionally excluded — documented in CLAUDE.md Storage section.
+- **CLAUDE.md drift.** Block-kind list now enumerates all 9 (`verify` / `questionnaire` added); architecture overview gained Claude-rescue / Lessons / Training-data export sections; SSO list mentions the `twitter.com` alias.
+- **`api.deleteTask` typing.** Now `Promise<{ ok: true }>` matching its sibling deletes.
+- **`substituteVars(undefined)`.** An explicitly-undefined Map value now substitutes to the empty string instead of the literal `"undefined"`. (Key absent → still leaves `$name` intact.) Regression: `server/src/__tests__/blocks.test.ts`.
+- **`PROFILE_DIR` / `SHOTS_DIR` cwd-relative.** Anchored via `import.meta.url` in a new `server/src/paths/storage.ts`; `TICKLE_PROFILE_DIR` / `TICKLE_SHOTS_DIR` env vars override (absolute path passes through; relative resolves against `server/`). `SHOTS_DIR` default kept at `screenshots` until commit 6 aligns `paths.ts` and `routes/runs.ts`. Regression: `server/src/__tests__/browser.paths.test.ts`.
+- **`loadEnv` cwd-relative + non-ENOENT crashes.** Anchored via `import.meta.url`; walks `server/.env` then repo-root `.env`. ENOENT silently skips to next candidate; EACCES / EISDIR / other IO errors logged via `console.error` and skipped. Never throws. Regression: `server/src/__tests__/loadEnv.test.ts`.
+- **Two diverging text-extraction walkers.** `read_text` and `fetch_url` now share a single in-page walker (`__extractVisibleTextFnSource` in `server/src/tools.ts`), evaluated via a string + `new Function` so neither call site can drift. The 8 strip rules (script/style/template/aria-hidden/display/visibility/opacity/font-size/zero-rect/colour-camouflage) apply to both. Regression: `server/src/__tests__/tools.readText.test.ts`.
+- **`wait_for` resolved on attached, not visible.** Default state is now `"visible"`. Optional `state` parameter accepts `visible` / `attached` / `hidden` / `detached`, validated server-side against the enum.
+- **`select_option` description.** Aligned with Playwright's match priority (value → label → text).
+- **Visibility check inconsistency.** New `server/src/visibility.ts` exports `isVisuallyHidden(style, rect?)` with `parseFloat(opacity) === 0`. `formScan.ts` and `loginDetect.ts` keep their inline `page.evaluate` copies (mirrored logic, marked `keep-in-sync: visibility.ts`) so the same `0.0` / `0.00` opacity case is caught in both. Regression: `server/src/__tests__/loginDetect.test.ts`.
+- **Snapshot doesn't filter `aria-hidden="true"`.** `snapshot.ts::isVisible` now rejects elements with an `aria-hidden="true"` ancestor via `el.closest("[aria-hidden='true']")`. `aria-hidden="false"` does NOT hide. Regression: `server/src/__tests__/snapshot.test.ts`.
+- **DOM `data-tickle-id` mutation side effects.** Both `snapshot.ts` and `formScan.ts` now strip stale `[data-tickle-id]` attributes at the top of each `page.evaluate` block before retagging. Verified safe: `act` resolves ids strictly within one snapshot→act window. Regression: `server/src/__tests__/snapshot.test.ts`.
