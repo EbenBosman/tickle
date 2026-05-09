@@ -1,12 +1,13 @@
 import { chromium, type BrowserContext, type Page } from "playwright";
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { PROFILE_DIR, SHOTS_DIR } from "./paths/storage.ts";
 
 const HEADED = (process.env.HEADED ?? "true") !== "false";
-const PROFILE_DIR = "data/profile";
-const SHOTS_DIR = "screenshots";
 mkdirSync(PROFILE_DIR, { recursive: true });
 mkdirSync(SHOTS_DIR, { recursive: true });
+
+export { PROFILE_DIR, SHOTS_DIR };
 
 let sharedContext: BrowserContext | null = null;
 
